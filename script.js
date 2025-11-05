@@ -25,6 +25,7 @@ class ASCIIDigitizer {
         
         // Settings
         this.settings = {
+            imageSize: 1,
             resolution: 100,
             fontSize: 8,
             contrast: 1.0,
@@ -56,6 +57,8 @@ class ASCIIDigitizer {
         this.zoomLevel = document.getElementById('zoomLevel');
         
         // Controls
+        this.imageSizeSelect = document.getElementById('imageSizeSelect');
+        this.imageSizeValue = document.getElementById('imageSizeValue');
         this.resolutionSlider = document.getElementById('resolutionSlider');
         this.fontSizeSlider = document.getElementById('fontSizeSlider');
         this.contrastSlider = document.getElementById('contrastSlider');
@@ -94,6 +97,15 @@ class ASCIIDigitizer {
         this.downloadTextBtn.addEventListener('click', () => this.downloadAsText());
         
         // Settings
+        this.imageSizeSelect.addEventListener('change', (e) => {
+            this.settings.imageSize = parseFloat(e.target.value);
+            this.imageSizeValue.textContent = `${e.target.value}x`;
+            // Update preview if image is loaded
+            if (this.currentImage) {
+                this.displayOriginalImage();
+            }
+        });
+        
         this.resolutionSlider.addEventListener('input', (e) => {
             this.settings.resolution = parseInt(e.target.value);
             this.resolutionValue.textContent = e.target.value;
@@ -125,6 +137,46 @@ class ASCIIDigitizer {
         this.zoomInBtn.addEventListener('click', () => this.adjustZoom(10));
         this.zoomOutBtn.addEventListener('click', () => this.adjustZoom(-10));
         this.fitBtn.addEventListener('click', () => this.fitToView());
+        
+        // Touch gestures for ASCII preview (pinch to zoom on mobile)
+        this.initTouchGestures();
+    }
+    
+    initTouchGestures() {
+        let initialDistance = 0;
+        let initialZoom = 100;
+        
+        this.asciiPreview.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                initialDistance = Math.hypot(
+                    touch2.clientX - touch1.clientX,
+                    touch2.clientY - touch1.clientY
+                );
+                initialZoom = this.settings.zoom;
+            }
+        }, { passive: false });
+        
+        this.asciiPreview.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && this.asciiText) {
+                e.preventDefault();
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                const currentDistance = Math.hypot(
+                    touch2.clientX - touch1.clientX,
+                    touch2.clientY - touch1.clientY
+                );
+                
+                const scale = currentDistance / initialDistance;
+                const newZoom = Math.max(25, Math.min(400, initialZoom * scale));
+                
+                this.settings.zoom = Math.round(newZoom);
+                this.updateZoomDisplay();
+                this.updateASCIIDisplay();
+            }
+        }, { passive: false });
     }
     
     handleFileUpload(event) {
@@ -147,15 +199,27 @@ class ASCIIDigitizer {
     
     async openCamera() {
         try {
-            this.stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: 'user',
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                } 
-            });
+            // Detect if mobile device
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            
+            const constraints = {
+                video: {
+                    facingMode: isMobile ? { ideal: 'environment' } : 'user',
+                    width: { ideal: isMobile ? 1920 : 1280 },
+                    height: { ideal: isMobile ? 1080 : 720 }
+                }
+            };
+            
+            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.videoElement.srcObject = this.stream;
             this.cameraContainer.hidden = false;
+            
+            // Scroll to camera view on mobile
+            if (isMobile) {
+                setTimeout(() => {
+                    this.cameraContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 300);
+            }
         } catch (error) {
             alert('ERROR: Unable to access camera. Please check your camera permissions in browser settings.');
             console.error('Camera error:', error);
@@ -198,7 +262,9 @@ class ASCIIDigitizer {
     }
     
     displayOriginalImage() {
-        this.originalPreview.innerHTML = `<img src="${this.currentImageUrl}" alt="Original Image">`;
+        const scaledWidth = Math.floor(this.currentImage.width * this.settings.imageSize);
+        const scaledHeight = Math.floor(this.currentImage.height * this.settings.imageSize);
+        this.originalPreview.innerHTML = `<img src="${this.currentImageUrl}" alt="Original Image" style="width: ${scaledWidth}px; height: ${scaledHeight}px;">`;
     }
     
     generateASCII() {
@@ -207,19 +273,18 @@ class ASCIIDigitizer {
         const canvas = this.imageCanvas;
         const ctx = canvas.getContext('2d');
         
-        // Use original image dimensions to maintain exact pixel size
-        // Resolution slider now controls the character density/sampling
-        const originalWidth = this.currentImage.width;
-        const originalHeight = this.currentImage.height;
+        // Apply image size scaling
+        const scaledWidth = Math.floor(this.currentImage.width * this.settings.imageSize);
+        const scaledHeight = Math.floor(this.currentImage.height * this.settings.imageSize);
         
         // Calculate character dimensions to match pixel size
         // ASCII characters are roughly 0.6 width-to-height ratio in monospace fonts
         const charAspectRatio = 0.6;
         const scale = this.settings.resolution / 100;
         
-        // Calculate how many characters we need to fill the original dimensions
-        const charWidth = Math.floor(originalWidth / (this.settings.fontSize * charAspectRatio) * scale);
-        const charHeight = Math.floor(originalHeight / this.settings.fontSize * scale);
+        // Calculate how many characters we need to fill the scaled dimensions
+        const charWidth = Math.floor(scaledWidth / (this.settings.fontSize * charAspectRatio) * scale);
+        const charHeight = Math.floor(scaledHeight / this.settings.fontSize * scale);
         
         canvas.width = charWidth;
         canvas.height = charHeight;
@@ -388,6 +453,11 @@ class ASCIIDigitizer {
             this.settings.zoom = Math.floor(Math.min(widthZoom, heightZoom, 100));
             this.updateZoomDisplay();
             this.updateASCIIDisplay();
+            
+            // Provide haptic feedback on mobile if available
+            if (navigator.vibrate) {
+                navigator.vibrate(50);
+            }
         }
     }
     
@@ -408,12 +478,12 @@ class ASCIIDigitizer {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        // Match original image dimensions exactly
-        const originalWidth = this.currentImage.width;
-        const originalHeight = this.currentImage.height;
+        // Match scaled image dimensions exactly
+        const scaledWidth = Math.floor(this.currentImage.width * this.settings.imageSize);
+        const scaledHeight = Math.floor(this.currentImage.height * this.settings.imageSize);
         
-        canvas.width = originalWidth;
-        canvas.height = originalHeight;
+        canvas.width = scaledWidth;
+        canvas.height = scaledHeight;
         
         // Calculate font size to fit the dimensions
         const lines = this.asciiText.split('\n').filter(line => line.length > 0);
@@ -421,8 +491,8 @@ class ASCIIDigitizer {
         const charAspectRatio = 0.6;
         
         // Calculate optimal font size to match dimensions
-        const fontSizeByWidth = originalWidth / (maxLineLength * charAspectRatio);
-        const fontSizeByHeight = originalHeight / lines.length;
+        const fontSizeByWidth = scaledWidth / (maxLineLength * charAspectRatio);
+        const fontSizeByHeight = scaledHeight / lines.length;
         const optimalFontSize = Math.min(fontSizeByWidth, fontSizeByHeight);
         
         // Set background
@@ -461,7 +531,7 @@ class ASCIIDigitizer {
             a.download = `ascii-art-${Date.now()}.png`;
             a.click();
             URL.revokeObjectURL(url);
-            this.showNotification(`Image saved successfully! (${originalWidth}x${originalHeight}px)`);
+            this.showNotification(`Image saved successfully! (${scaledWidth}x${scaledHeight}px)`);
         });
     }
     
@@ -477,16 +547,18 @@ class ASCIIDigitizer {
     }
     
     showNotification(message) {
+        // Detect if mobile
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
         // Terminal-style notification
         const notification = document.createElement('div');
         notification.textContent = `> ${message}`;
         notification.style.cssText = `
             position: fixed;
-            top: 20px;
-            right: 20px;
+            ${isMobile ? 'top: 10px; left: 10px; right: 10px; max-width: calc(100% - 20px);' : 'top: 20px; right: 20px;'}
             background: #000000;
             color: #00ff00;
-            padding: 15px 25px;
+            padding: ${isMobile ? '12px 15px' : '15px 25px'};
             border: 2px solid #00ff00;
             box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
             z-index: 1000;
@@ -494,8 +566,15 @@ class ASCIIDigitizer {
             font-family: 'Courier New', monospace;
             letter-spacing: 1px;
             text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+            font-size: ${isMobile ? '0.85em' : '1em'};
+            text-align: center;
         `;
         document.body.appendChild(notification);
+        
+        // Haptic feedback on mobile
+        if (isMobile && navigator.vibrate) {
+            navigator.vibrate(50);
+        }
         
         setTimeout(() => {
             notification.style.animation = 'slideOut 0.3s ease';

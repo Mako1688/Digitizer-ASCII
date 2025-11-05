@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>ASCII Image Digitizer</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -43,6 +46,19 @@
             <section class="controls-section">
                 <h2>[ CONVERSION SETTINGS ]</h2>
                 <div class="control-grid">
+                    <div class="control-group">
+                        <label for="imageSizeSelect">
+                            &gt; IMAGE SCALE: <span id="imageSizeValue">1x</span>
+                        </label>
+                        <select id="imageSizeSelect" class="size-select">
+                            <option value="0.25">0.25x (Quarter)</option>
+                            <option value="0.5">0.5x (Half)</option>
+                            <option value="1" selected>1x (Original)</option>
+                            <option value="2">2x (Double)</option>
+                            <option value="4">4x (Quad)</option>
+                        </select>
+                    </div>
+
                     <div class="control-group">
                         <label for="resolutionSlider">
                             &gt; DETAIL LEVEL: <span id="resolutionValue">100</span>%
