@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Image Digitizer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span class="terminal-prompt">root@ascii:~#</span> ASCII IMAGE CONVERTER</h1>
+            <p>[ TRANSFORM YOUR IMAGES INTO ASCII CHARACTER ART ]</p>
+        </header>
+
+        <main>
+            <!-- Input Section -->
+            <section class="input-section">
+                <div class="button-group">
+                    <button id="uploadBtn" class="primary-btn">
+                        &gt; UPLOAD IMAGE FILE
+                    </button>
+                    <button id="cameraBtn" class="primary-btn">
+                        &gt; USE CAMERA
+                    </button>
+                    <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg,image/gif" hidden>
+                </div>
+
+                <!-- Camera Preview -->
+                <div id="cameraContainer" class="camera-container" hidden>
+                    <video id="videoElement" autoplay playsinline></video>
+                    <div class="camera-controls">
+                        <button id="captureBtn" class="primary-btn">&gt; TAKE PHOTO</button>
+                        <button id="closeCameraBtn" class="secondary-btn">&gt; CLOSE CAMERA</button>
+                    </div>
+                </div>
+
+                <!-- Canvas for image processing -->
+                <canvas id="imageCanvas" hidden></canvas>
+            </section>
+
+            <!-- Controls Section -->
+            <section class="controls-section">
+                <h2>[ CONVERSION SETTINGS ]</h2>
+                <div class="control-grid">
+                    <div class="control-group">
+                        <label for="resolutionSlider">
+                            &gt; DETAIL LEVEL: <span id="resolutionValue">100</span>%
+                        </label>
+                        <input type="range" id="resolutionSlider" min="50" max="200" value="100" step="10">
+                    </div>
+
+                    <div class="control-group">
+                        <label for="fontSizeSlider">
+                            &gt; CHARACTER SIZE: <span id="fontSizeValue">8</span>px
+                        </label>
+                        <input type="range" id="fontSizeSlider" min="4" max="16" value="8" step="1">
+                    </div>
+
+                    <div class="control-group">
+                        <label for="contrastSlider">
+                            &gt; CONTRAST: <span id="contrastValue">1.0</span>x
+                        </label>
+                        <input type="range" id="contrastSlider" min="0.5" max="2.0" value="1.0" step="0.1">
+                    </div>
+
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="colorToggle">
+                            &gt; USE COLORS
+                        </label>
+                    </div>
+
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="invertToggle">
+                            &gt; INVERT BRIGHTNESS
+                        </label>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button id="generateBtn" class="primary-btn" disabled>
+                        &gt;&gt; GENERATE ASCII ART
+                    </button>
+                </div>
+            </section>
+
+            <!-- Preview Section -->
+            <section class="preview-section">
+                <h2>[ PREVIEW ]</h2>
+                <div class="preview-container">
+                    <div class="preview-box">
+                        <h3>&gt; ORIGINAL IMAGE</h3>
+                        <div id="originalPreview" class="image-preview">
+                            <p class="placeholder-text">[ NO IMAGE LOADED YET ]</p>
+                        </div>
+                    </div>
+                    <div class="preview-box">
+                        <h3>&gt; ASCII ART RESULT</h3>
+                        <div class="zoom-controls">
+                            <button id="zoomOutBtn" class="zoom-btn" disabled>&gt; ZOOM OUT</button>
+                            <span id="zoomLevel">100%</span>
+                            <button id="zoomInBtn" class="zoom-btn" disabled>&gt; ZOOM IN</button>
+                            <button id="fitBtn" class="zoom-btn" disabled>&gt; FIT TO VIEW</button>
+                        </div>
+                        <div id="asciiPreview" class="ascii-preview">
+                            <p class="placeholder-text">[ WAITING FOR CONVERSION ]</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Export Section -->
+            <section class="export-section">
+                <h2>[ SAVE & EXPORT ]</h2>
+                <div class="button-group">
+                    <button id="copyTextBtn" class="secondary-btn" disabled>
+                        &gt; COPY TEXT
+                    </button>
+                    <button id="downloadImageBtn" class="secondary-btn" disabled>
+                        &gt; DOWNLOAD AS IMAGE
+                    </button>
+                    <button id="downloadTextBtn" class="secondary-btn" disabled>
+                        &gt; DOWNLOAD AS TEXT
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>[ ASCII CONVERTER v1.0 ] - [ READY ]</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
