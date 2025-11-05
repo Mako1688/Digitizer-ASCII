@@ -149,6 +149,21 @@
         </footer>
     </div>
 
-    <script src="script.js"></script>
+    <!-- Configuration and Constants -->
+    <script src="js/config.js"></script>
+    
+    <!-- Services (in dependency order) -->
+    <script src="js/services/NotificationService.js"></script>
+    <script src="js/services/ASCIICharacterService.js"></script>
+    <script src="js/services/ImageProcessorService.js"></script>
+    <script src="js/services/CameraService.js"></script>
+    <script src="js/services/ASCIIGeneratorService.js"></script>
+    <script src="js/services/ExportService.js"></script>
+    
+    <!-- Controllers -->
+    <script src="js/controllers/UIController.js"></script>
+    
+    <!-- Main Application -->
+    <script src="js/app.js"></script>
 </body>
 </html>
