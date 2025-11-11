@@ -79,26 +79,50 @@ class GIFParserService {
         this.gifCanvas.width = width;
         this.gifCanvas.height = height;
         
-        // Create a persistent image data buffer for accumulating frames
-        const frameImageData = this.gifCtx.createImageData(width, height);
+        // Create persistent canvas buffer for frame composition
+        const compositeCanvas = document.createElement('canvas');
+        compositeCanvas.width = width;
+        compositeCanvas.height = height;
+        const compositeCtx = compositeCanvas.getContext('2d');
+        
+        // Initialize with transparent background
+        compositeCtx.clearRect(0, 0, width, height);
         
         for (let frameIndex = 0; frameIndex < numFrames; frameIndex++) {
             try {
                 // Get frame info
                 const frameInfo = reader.frameInfo(frameIndex);
                 
-                // Decode frame pixels
+                // Handle disposal method from previous frame
+                if (frameIndex > 0) {
+                    const prevFrameInfo = reader.frameInfo(frameIndex - 1);
+                    // disposal: 0/1 = no disposal, 2 = restore to background, 3 = restore to previous
+                    if (prevFrameInfo.disposal === 2) {
+                        // Clear to transparent
+                        compositeCtx.clearRect(0, 0, width, height);
+                    }
+                    // For disposal 3, we keep the previous frame (do nothing)
+                    // For disposal 0/1, we draw on top (do nothing)
+                }
+                
+                // Decode current frame pixels
                 const pixels = new Uint8ClampedArray(width * height * 4);
                 reader.decodeAndBlitFrameRGBA(frameIndex, pixels);
                 
-                // Copy pixels to ImageData
-                frameImageData.data.set(pixels);
+                // Create ImageData for current frame
+                const frameImageData = new ImageData(
+                    new Uint8ClampedArray(pixels),
+                    width,
+                    height
+                );
                 
-                // Draw to canvas
+                // Blit frame onto composite canvas
                 this.gifCtx.putImageData(frameImageData, 0, 0);
+                compositeCtx.drawImage(this.gifCanvas, 0, 0);
                 
-                // Convert to data URL
-                const dataUrl = this.gifCanvas.toDataURL('image/png');
+                // Convert composite to data URL and ImageData
+                const dataUrl = compositeCanvas.toDataURL('image/png');
+                const compositedImageData = compositeCtx.getImageData(0, 0, width, height);
                 
                 // Get delay (in centiseconds from GIF, convert to milliseconds)
                 const delay = (frameInfo.delay || 10) * 10; // Default 100ms if 0
@@ -111,10 +135,12 @@ class GIFParserService {
                     width: width,
                     height: height,
                     dataUrl: dataUrl,
-                    imageData: this.gifCtx.getImageData(0, 0, width, height),
+                    imageData: compositedImageData,
                     delay: clampedDelay,
                     index: frameIndex
                 });
+                
+                console.log(`[GIFParser] Frame ${frameIndex + 1}/${numFrames} extracted (delay: ${clampedDelay}ms, disposal: ${frameInfo.disposal})`);
                 
             } catch (frameError) {
                 console.error(`[GIFParser] Error extracting frame ${frameIndex}:`, frameError);

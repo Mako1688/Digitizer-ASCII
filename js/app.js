@@ -158,6 +158,12 @@ class ASCIIDigitizer {
             });
             
             this.updateOriginalPreview();
+            
+            // Start original GIF preview animation if animated
+            if (gifData.isAnimated) {
+                this.startOriginalGIFPreview();
+            }
+            
             this.uiController.setGenerateButtonEnabled(true);
             
             this.notificationService.show(
@@ -434,6 +440,46 @@ class ASCIIDigitizer {
             this.state.animationId = null;
         }
         this.state.isPlaying = false;
+    }
+
+    /**
+     * Start original GIF preview animation
+     */
+    startOriginalGIFPreview() {
+        if (!this.state.gifFrames || this.state.gifFrames.length <= 1) return;
+        
+        // Stop any existing preview animation
+        this.stopOriginalGIFPreview();
+        
+        let previewFrameIndex = 0;
+        
+        const playNextPreviewFrame = () => {
+            const frame = this.state.gifFrames[previewFrameIndex];
+            
+            // Update the original preview image
+            const originalPreview = document.querySelector('.image-preview img');
+            if (originalPreview) {
+                originalPreview.src = frame.dataUrl;
+            }
+            
+            // Move to next frame
+            previewFrameIndex = (previewFrameIndex + 1) % this.state.gifFrames.length;
+            
+            // Schedule next frame
+            this.state.previewAnimationId = setTimeout(playNextPreviewFrame, frame.delay);
+        };
+        
+        playNextPreviewFrame();
+    }
+
+    /**
+     * Stop original GIF preview animation
+     */
+    stopOriginalGIFPreview() {
+        if (this.state.previewAnimationId) {
+            clearTimeout(this.state.previewAnimationId);
+            this.state.previewAnimationId = null;
+        }
     }
 
     /**
