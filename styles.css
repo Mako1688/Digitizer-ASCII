@@ -374,6 +374,7 @@ input[type="checkbox"] {
     display: block;
     text-shadow: none;
     width: 100%;
+    position: relative; /* For frame counter positioning */
 }
 
 .ascii-preview:not(:empty) {
@@ -668,4 +669,109 @@ footer {
     border-radius: 50%;
     border-top-color: white;
     animation: spin 1s ease-in-out infinite;
+}
+
+/* GIF Info Panel */
+.gif-info-panel {
+    margin-top: 20px;
+    padding: 20px;
+    background: var(--bg-color);
+    border: 2px solid var(--border-color);
+    box-shadow: inset 0 0 15px rgba(0, 255, 0, 0.1);
+}
+
+.gif-info-content {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.gif-thumbnail-container {
+    flex-shrink: 0;
+}
+
+.gif-thumbnail {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+    border: 2px solid var(--border-color);
+    background: #000000;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.gif-details {
+    flex: 1;
+    font-size: 0.95em;
+}
+
+.gif-details p {
+    margin: 8px 0;
+    color: var(--text-color);
+}
+
+.gif-details .label {
+    color: var(--secondary-color);
+    font-weight: bold;
+}
+
+.gif-warning {
+    color: #ffff00 !important;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Frame Counter */
+.frame-counter {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    color: var(--primary-color);
+    padding: 5px 10px;
+    border: 1px solid var(--border-color);
+    font-size: 0.85em;
+    font-weight: bold;
+    z-index: 10;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+/* GIF Export Section */
+.gif-export-section {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid var(--border-color);
+}
+
+.gif-export-section h3 {
+    color: var(--secondary-color);
+    margin-bottom: 15px;
+    font-size: 1.2em;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+/* Responsive GIF Elements */
+@media (max-width: 768px) {
+    .gif-info-content {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .gif-thumbnail {
+        width: 100px;
+        height: 100px;
+    }
+    
+    .gif-details {
+        font-size: 0.85em;
+    }
+    
+    .frame-counter {
+        font-size: 0.75em;
+        padding: 4px 8px;
+    }
 }

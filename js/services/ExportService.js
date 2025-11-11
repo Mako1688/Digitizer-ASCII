@@ -175,4 +175,104 @@ class ExportService {
         a.download = filename;
         a.click();
     }
+
+    /**
+     * Download ASCII frames as animated GIF
+     * @param {Array} asciiFrames - Array of ASCII frame data
+     * @param {Object} settings - Export settings
+     * @param {number} width - Original GIF width
+     * @param {number} height - Original GIF height
+     */
+    async downloadAsGIF(asciiFrames, settings, width, height) {
+        // For now, we'll export frames as images
+        // Full GIF encoding would require gif.js library
+        this.notificationService.show('Creating individual frame images...');
+        
+        // Create a canvas for each frame and compile
+        const frames = [];
+        
+        for (let i = 0; i < asciiFrames.length; i++) {
+            const frame = asciiFrames[i];
+            const canvas = this.createCanvasForExport(
+                frame.asciiText,
+                frame.coloredData,
+                settings,
+                width,
+                height
+            );
+            
+            const blob = await new Promise(resolve => canvas.toBlob(resolve));
+            frames.push({
+                blob,
+                delay: frame.delay
+            });
+        }
+        
+        // For now, download as ZIP since we don't have gif.js loaded
+        // This will be enhanced with actual GIF encoding
+        await this.downloadFramesAsZip(asciiFrames, settings, width, height);
+        
+        this.notificationService.show('GIF frames exported! (Full GIF encoding coming soon)');
+    }
+
+    /**
+     * Download all frames as individual PNG files in a ZIP
+     * @param {Array} asciiFrames - Array of ASCII frame data
+     * @param {Object} settings - Export settings
+     * @param {number} width - Frame width
+     * @param {number} height - Frame height
+     */
+    async downloadFramesAsZip(asciiFrames, settings, width, height) {
+        // Create a simple ZIP-like download by creating a folder with individual images
+        // In a full implementation, we'd use JSZip library
+        
+        this.notificationService.show(
+            `Downloading ${asciiFrames.length} frames individually...`
+        );
+        
+        for (let i = 0; i < asciiFrames.length; i++) {
+            const frame = asciiFrames[i];
+            const canvas = this.createCanvasForExport(
+                frame.asciiText,
+                frame.coloredData,
+                settings,
+                width,
+                height
+            );
+            
+            await new Promise((resolve) => {
+                canvas.toBlob(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const filename = `ascii-frame-${String(i + 1).padStart(4, '0')}.png`;
+                    this.triggerDownload(url, filename);
+                    URL.revokeObjectURL(url);
+                    
+                    // Small delay between downloads to prevent browser blocking
+                    setTimeout(resolve, 100);
+                });
+            });
+        }
+        
+        this.notificationService.show(
+            `All ${asciiFrames.length} frames downloaded successfully!`
+        );
+    }
+
+    /**
+     * Create a simple text file with frame information
+     * @param {Array} asciiFrames - Array of ASCII frames
+     * @returns {string} Frame info text
+     */
+    createFrameInfoText(asciiFrames) {
+        let info = '=== ASCII GIF FRAME INFORMATION ===\n\n';
+        info += `Total Frames: ${asciiFrames.length}\n\n`;
+        
+        asciiFrames.forEach((frame, index) => {
+            info += `Frame ${index + 1}:\n`;
+            info += `Delay: ${frame.delay}ms\n`;
+            info += `---\n`;
+        });
+        
+        return info;
+    }
 }

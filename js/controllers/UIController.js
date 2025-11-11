@@ -26,6 +26,21 @@ class UIController {
             downloadImageBtn: document.getElementById('downloadImageBtn'),
             downloadTextBtn: document.getElementById('downloadTextBtn'),
             
+            // GIF elements
+            gifInfoPanel: document.getElementById('gifInfoPanel'),
+            gifThumbnail: document.getElementById('gifThumbnail'),
+            gifFileType: document.getElementById('gifFileType'),
+            gifDimensions: document.getElementById('gifDimensions'),
+            gifFrameCount: document.getElementById('gifFrameCount'),
+            gifFileSize: document.getElementById('gifFileSize'),
+            gifWarning: document.getElementById('gifWarning'),
+            gifExportSection: document.getElementById('gifExportSection'),
+            downloadGifBtn: document.getElementById('downloadGifBtn'),
+            downloadFramesBtn: document.getElementById('downloadFramesBtn'),
+            frameCounter: document.getElementById('frameCounter'),
+            currentFrame: document.getElementById('currentFrame'),
+            totalFrames: document.getElementById('totalFrames'),
+            
             // Zoom controls
             zoomInBtn: document.getElementById('zoomInBtn'),
             zoomOutBtn: document.getElementById('zoomOutBtn'),
@@ -81,6 +96,16 @@ class UIController {
             () => this.eventHandlers.onDownloadImage());
         this.elements.downloadTextBtn.addEventListener('click', 
             () => this.eventHandlers.onDownloadText());
+        
+        // GIF export events
+        if (this.elements.downloadGifBtn) {
+            this.elements.downloadGifBtn.addEventListener('click', 
+                () => this.eventHandlers.onDownloadGif());
+        }
+        if (this.elements.downloadFramesBtn) {
+            this.elements.downloadFramesBtn.addEventListener('click', 
+                () => this.eventHandlers.onDownloadFrames());
+        }
         
         // Settings events
         this.elements.imageSizeSelect.addEventListener('change', 
@@ -266,5 +291,80 @@ class UIController {
     showASCIIPlaceholder(message) {
         this.elements.asciiPreview.innerHTML = 
             `<p class="placeholder-text">${message}</p>`;
+    }
+
+    /**
+     * Show GIF information panel
+     * @param {Object} gifInfo - GIF metadata
+     */
+    showGIFInfo(gifInfo) {
+        if (!this.elements.gifInfoPanel) return;
+        
+        this.elements.gifInfoPanel.hidden = false;
+        this.elements.gifThumbnail.src = gifInfo.thumbnail;
+        this.elements.gifFileType.textContent = gifInfo.isAnimated ? 'ANIMATED GIF' : 'STATIC GIF';
+        this.elements.gifDimensions.textContent = `${gifInfo.width} x ${gifInfo.height}`;
+        this.elements.gifFrameCount.textContent = gifInfo.frameCount;
+        this.elements.gifFileSize.textContent = gifInfo.fileSize;
+        this.elements.gifWarning.hidden = !gifInfo.showWarning;
+    }
+
+    /**
+     * Hide GIF information panel
+     */
+    hideGIFInfo() {
+        if (this.elements.gifInfoPanel) {
+            this.elements.gifInfoPanel.hidden = true;
+        }
+    }
+
+    /**
+     * Show frame counter
+     * @param {number} totalFrames - Total number of frames
+     */
+    showFrameCounter(totalFrames) {
+        if (this.elements.frameCounter) {
+            this.elements.frameCounter.hidden = false;
+            this.elements.totalFrames.textContent = totalFrames;
+        }
+    }
+
+    /**
+     * Hide frame counter
+     */
+    hideFrameCounter() {
+        if (this.elements.frameCounter) {
+            this.elements.frameCounter.hidden = true;
+        }
+    }
+
+    /**
+     * Update frame counter display
+     * @param {number} current - Current frame number
+     * @param {number} total - Total frames
+     */
+    updateFrameCounter(current, total) {
+        if (this.elements.currentFrame && this.elements.totalFrames) {
+            this.elements.currentFrame.textContent = current;
+            this.elements.totalFrames.textContent = total;
+        }
+    }
+
+    /**
+     * Show GIF export options
+     */
+    showGIFExportOptions() {
+        if (this.elements.gifExportSection) {
+            this.elements.gifExportSection.hidden = false;
+        }
+    }
+
+    /**
+     * Hide GIF export options
+     */
+    hideGIFExportOptions() {
+        if (this.elements.gifExportSection) {
+            this.elements.gifExportSection.hidden = true;
+        }
     }
 }

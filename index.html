@@ -38,6 +38,24 @@
                     </div>
                 </div>
 
+                <!-- GIF Info Panel -->
+                <div id="gifInfoPanel" class="gif-info-panel" hidden>
+                    <div class="gif-info-content">
+                        <div class="gif-thumbnail-container">
+                            <img id="gifThumbnail" class="gif-thumbnail" alt="GIF Preview">
+                        </div>
+                        <div class="gif-details">
+                            <p><span class="label">&gt; FILE TYPE:</span> <span id="gifFileType">ANIMATED GIF</span></p>
+                            <p><span class="label">&gt; DIMENSIONS:</span> <span id="gifDimensions">0 x 0</span></p>
+                            <p><span class="label">&gt; FRAME COUNT:</span> <span id="gifFrameCount">0</span></p>
+                            <p><span class="label">&gt; FILE SIZE:</span> <span id="gifFileSize">0 KB</span></p>
+                            <p id="gifWarning" class="gif-warning" hidden>
+                                <span class="label">⚠ WARNING:</span> Large GIF file - processing may take time
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Canvas for image processing -->
                 <canvas id="imageCanvas" hidden></canvas>
             </section>
@@ -122,6 +140,9 @@
                         </div>
                         <div id="asciiPreview" class="ascii-preview">
                             <p class="placeholder-text">[ WAITING FOR CONVERSION ]</p>
+                            <div id="frameCounter" class="frame-counter" hidden>
+                                FRAME: <span id="currentFrame">1</span> / <span id="totalFrames">1</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -141,6 +162,19 @@
                         &gt; DOWNLOAD AS TEXT
                     </button>
                 </div>
+                
+                <!-- GIF Export Options -->
+                <div id="gifExportSection" class="gif-export-section" hidden>
+                    <h3>&gt; ANIMATED GIF EXPORT OPTIONS</h3>
+                    <div class="button-group">
+                        <button id="downloadGifBtn" class="secondary-btn">
+                            &gt; EXPORT AS ANIMATED GIF
+                        </button>
+                        <button id="downloadFramesBtn" class="secondary-btn">
+                            &gt; DOWNLOAD ALL FRAMES (ZIP)
+                        </button>
+                    </div>
+                </div>
             </section>
         </main>
 
@@ -152,10 +186,14 @@
     <!-- Configuration and Constants -->
     <script src="js/config.js"></script>
     
+    <!-- External Libraries -->
+    <script src="js/libs/omggif.js"></script>
+    
     <!-- Services (in dependency order) -->
     <script src="js/services/NotificationService.js"></script>
     <script src="js/services/ASCIICharacterService.js"></script>
     <script src="js/services/ImageProcessorService.js"></script>
+    <script src="js/services/GIFParserService.js"></script>
     <script src="js/services/CameraService.js"></script>
     <script src="js/services/ASCIIGeneratorService.js"></script>
     <script src="js/services/ExportService.js"></script>

@@ -93,6 +93,16 @@ const CONFIG = {
     // Preview dimensions
     PREVIEW: {
         PADDING: 30 // px to account for when fitting to view
+    },
+
+    // GIF animation settings
+    GIF: {
+        LARGE_FILE_THRESHOLD: 10 * 1024 * 1024, // 10MB - show warning for files larger than this
+        THUMBNAIL_SIZE: 120, // px for thumbnail preview
+        DEFAULT_FRAME_DELAY: 100, // ms - default delay if not specified in GIF
+        MIN_FRAME_DELAY: 20, // ms - minimum delay to prevent too-fast playback
+        MAX_FRAME_DELAY: 5000, // ms - maximum delay
+        EXPORT_QUALITY: 10 // Quality for GIF export (1-30, lower is better)
     }
 };
 

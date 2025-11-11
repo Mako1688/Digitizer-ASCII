@@ -8,6 +8,7 @@ class ASCIIDigitizer {
         this.notificationService = new NotificationService();
         this.characterService = new ASCIICharacterService();
         this.imageProcessor = new ImageProcessorService();
+        this.gifParser = new GIFParserService();
         this.cameraService = new CameraService();
         this.asciiGenerator = new ASCIIGeneratorService(
             this.characterService, 
@@ -21,7 +22,14 @@ class ASCIIDigitizer {
             currentImageUrl: null,
             asciiText: '',
             coloredData: null,
-            settings: { ...CONFIG.DEFAULT_SETTINGS }
+            settings: { ...CONFIG.DEFAULT_SETTINGS },
+            // GIF-specific state
+            isGIF: false,
+            gifData: null,
+            gifFrames: [],
+            currentFrameIndex: 0,
+            animationId: null,
+            isPlaying: false
         };
         
         // Initialize UI controller with event handlers
@@ -43,6 +51,8 @@ class ASCIIDigitizer {
             onCopyText: () => this.handleCopyText(),
             onDownloadImage: () => this.handleDownloadImage(),
             onDownloadText: () => this.handleDownloadText(),
+            onDownloadGif: () => this.handleDownloadGif(),
+            onDownloadFrames: () => this.handleDownloadFrames(),
             onImageSizeChange: (e) => this.handleImageSizeChange(e),
             onResolutionChange: (e) => this.handleResolutionChange(e),
             onFontSizeChange: (e) => this.handleFontSizeChange(e),
@@ -73,11 +83,91 @@ class ASCIIDigitizer {
         }
         
         try {
-            const dataUrl = await this.imageProcessor.readFileAsDataURL(file);
-            await this.loadImage(dataUrl);
+            // Check if file is a GIF
+            console.log('[DEBUG] File uploaded:', file.name, 'Type:', file.type);
+            const isGIF = this.gifParser.isGIF(file);
+            console.log('[DEBUG] Is GIF?', isGIF);
+            
+            if (isGIF) {
+                console.log('[DEBUG] Calling handleGIFUpload...');
+                await this.handleGIFUpload(file);
+            } else {
+                console.log('[DEBUG] Loading as static image...');
+                const dataUrl = await this.imageProcessor.readFileAsDataURL(file);
+                await this.loadImage(dataUrl);
+            }
         } catch (error) {
             console.error('File upload error:', error);
             this.notificationService.showError('Failed to load image file');
+        }
+    }
+
+    /**
+     * Handle GIF file upload
+     * @param {File} file - GIF file
+     */
+    async handleGIFUpload(file) {
+        try {
+            console.log('[DEBUG] handleGIFUpload started for:', file.name);
+            
+            // Show warning for large files
+            if (this.gifParser.isLargeFile(file)) {
+                const fileSize = this.gifParser.formatFileSize(file.size);
+                console.log('[DEBUG] Large file warning:', fileSize);
+                this.notificationService.show(
+                    `Large GIF file detected (${fileSize}). Processing may take time...`
+                );
+            }
+            
+            // Parse GIF and extract all frames
+            this.notificationService.show('Extracting GIF frames...');
+            console.log('[DEBUG] Starting GIF parsing...');
+            const gifData = await this.gifParser.parseGIF(file);
+            console.log('[DEBUG] GIF parsed successfully:', gifData);
+            console.log('[DEBUG] Frame count:', gifData.frameCount);
+            console.log('[DEBUG] Is animated:', gifData.isAnimated);
+            
+            // Store GIF data
+            this.state.isGIF = true;
+            this.state.gifData = gifData;
+            this.state.gifFrames = gifData.frames;
+            this.state.currentFrameIndex = 0;
+            console.log('[DEBUG] State updated with', gifData.frames.length, 'frames');
+            
+            // Load first frame as current image
+            const firstFrame = gifData.frames[0];
+            console.log('[DEBUG] Loading first frame...');
+            const image = await this.imageProcessor.loadImage(firstFrame.dataUrl);
+            this.state.currentImage = image;
+            this.state.currentImageUrl = firstFrame.dataUrl;
+            
+            // Create and display thumbnail
+            console.log('[DEBUG] Creating thumbnail...');
+            const thumbnail = await this.gifParser.createThumbnail(firstFrame);
+            
+            // Update UI with GIF info
+            console.log('[DEBUG] Showing GIF info panel...');
+            this.uiController.showGIFInfo({
+                isAnimated: gifData.isAnimated,
+                width: gifData.width,
+                height: gifData.height,
+                frameCount: gifData.frameCount,
+                fileSize: this.gifParser.formatFileSize(gifData.fileSize),
+                thumbnail: thumbnail,
+                showWarning: this.gifParser.isLargeFile(file)
+            });
+            
+            this.updateOriginalPreview();
+            this.uiController.setGenerateButtonEnabled(true);
+            
+            this.notificationService.show(
+                `GIF loaded successfully! ${gifData.frameCount} frames detected.`
+            );
+            console.log('[DEBUG] GIF upload complete!');
+        } catch (error) {
+            console.error('[ERROR] GIF upload error:', error);
+            console.error('[ERROR] Error stack:', error.stack);
+            this.notificationService.showError('Failed to load GIF file');
         }
     }
 
@@ -153,6 +243,30 @@ class ASCIIDigitizer {
     handleGenerate() {
         if (!this.state.currentImage) return;
         
+        // Stop any existing animation
+        this.stopAnimation();
+        
+        if (this.state.isGIF && this.state.gifFrames.length > 1) {
+            // Generate ASCII for all GIF frames
+            this.generateGIFASCII();
+        } else {
+            // Generate single frame ASCII
+            this.generateSingleFrameASCII();
+        }
+        
+        // Enable export and zoom controls
+        this.uiController.setExportButtonsEnabled(true);
+        this.uiController.setZoomControlsEnabled(true);
+        
+        // Reset zoom to default
+        this.state.settings.zoom = CONFIG.ZOOM.DEFAULT;
+        this.uiController.updateZoomDisplay(this.state.settings.zoom);
+    }
+
+    /**
+     * Generate ASCII for single image
+     */
+    generateSingleFrameASCII() {
         const scaledDimensions = this.imageProcessor.calculateScaledDimensions(
             this.state.currentImage,
             this.state.settings.imageSize
@@ -176,14 +290,150 @@ class ASCIIDigitizer {
         } else {
             this.generateMonochromeASCII(imageData, charDimensions);
         }
+    }
+
+    /**
+     * Generate ASCII for all GIF frames
+     */
+    async generateGIFASCII() {
+        this.notificationService.show(
+            `Processing ${this.state.gifFrames.length} frames...`
+        );
         
-        // Enable export and zoom controls
-        this.uiController.setExportButtonsEnabled(true);
-        this.uiController.setZoomControlsEnabled(true);
+        const scaledDimensions = this.imageProcessor.calculateScaledDimensions(
+            this.state.currentImage,
+            this.state.settings.imageSize
+        );
         
-        // Reset zoom to default
-        this.state.settings.zoom = CONFIG.ZOOM.DEFAULT;
-        this.uiController.updateZoomDisplay(this.state.settings.zoom);
+        const charDimensions = this.imageProcessor.calculateCharacterDimensions(
+            scaledDimensions.width,
+            scaledDimensions.height,
+            this.state.settings.fontSize,
+            this.state.settings.resolution
+        );
+        
+        // Generate ASCII for each frame
+        const asciiFrames = [];
+        
+        for (let i = 0; i < this.state.gifFrames.length; i++) {
+            const frame = this.state.gifFrames[i];
+            const imageData = frame.imageData;
+            
+            if (this.state.settings.colored) {
+                const result = this.asciiGenerator.generateColored(
+                    imageData,
+                    charDimensions.charWidth,
+                    charDimensions.charHeight,
+                    this.state.settings
+                );
+                asciiFrames.push({
+                    coloredData: result.coloredData,
+                    asciiText: result.asciiText,
+                    delay: frame.delay || CONFIG.GIF.DEFAULT_FRAME_DELAY
+                });
+            } else {
+                const asciiText = this.asciiGenerator.generateMonochrome(
+                    imageData,
+                    charDimensions.charWidth,
+                    charDimensions.charHeight,
+                    this.state.settings
+                );
+                asciiFrames.push({
+                    asciiText: asciiText,
+                    delay: frame.delay || CONFIG.GIF.DEFAULT_FRAME_DELAY
+                });
+            }
+        }
+        
+        // Store ASCII frames
+        this.state.asciiFrames = asciiFrames;
+        this.state.currentFrameIndex = 0;
+        
+        // Display first frame
+        this.displayFrame(0);
+        
+        // Show frame counter
+        this.uiController.showFrameCounter(this.state.gifFrames.length);
+        this.uiController.updateFrameCounter(1, this.state.gifFrames.length);
+        
+        // Show GIF export options
+        this.uiController.showGIFExportOptions();
+        
+        // Start animation
+        this.startAnimation();
+        
+        this.notificationService.show('GIF ASCII art generated successfully!');
+    }
+
+    /**
+     * Display a specific frame of the animation
+     * @param {number} frameIndex - Index of frame to display
+     */
+    displayFrame(frameIndex) {
+        const frame = this.state.asciiFrames[frameIndex];
+        
+        if (this.state.settings.colored && frame.coloredData) {
+            const fragment = this.asciiGenerator.createColoredHTMLElements(
+                frame.coloredData,
+                this.state.settings.fontSize
+            );
+            this.uiController.updateASCIIPreviewHTML(fragment);
+            this.state.coloredData = frame.coloredData;
+        } else {
+            this.uiController.updateASCIIPreviewText(frame.asciiText);
+            this.state.coloredData = null;
+        }
+        
+        this.state.asciiText = frame.asciiText;
+        this.updateASCIIDisplay();
+        
+        // Update frame counter
+        this.uiController.updateFrameCounter(
+            frameIndex + 1,
+            this.state.gifFrames.length
+        );
+    }
+
+    /**
+     * Start animation playback
+     */
+    startAnimation() {
+        if (this.state.isPlaying || !this.state.asciiFrames) return;
+        
+        this.state.isPlaying = true;
+        this.state.currentFrameIndex = 0;
+        
+        const playNextFrame = () => {
+            if (!this.state.isPlaying) return;
+            
+            const frame = this.state.asciiFrames[this.state.currentFrameIndex];
+            this.displayFrame(this.state.currentFrameIndex);
+            
+            // Move to next frame
+            this.state.currentFrameIndex = 
+                (this.state.currentFrameIndex + 1) % this.state.asciiFrames.length;
+            
+            // Schedule next frame
+            const delay = Math.max(
+                CONFIG.GIF.MIN_FRAME_DELAY,
+                Math.min(CONFIG.GIF.MAX_FRAME_DELAY, frame.delay)
+            );
+            
+            this.state.animationId = setTimeout(playNextFrame, delay);
+        };
+        
+        playNextFrame();
+    }
+
+    /**
+     * Stop animation playback
+     */
+    stopAnimation() {
+        if (this.state.animationId) {
+            clearTimeout(this.state.animationId);
+            this.state.animationId = null;
+        }
+        this.state.isPlaying = false;
     }
 
     /**
@@ -386,6 +636,54 @@ class ASCIIDigitizer {
             scaledDimensions.width,
             scaledDimensions.height
         );
+    }
+
+    /**
+     * Handle download as animated GIF
+     */
+    async handleDownloadGif() {
+        if (!this.state.isGIF || !this.state.asciiFrames) {
+            this.notificationService.showError('No GIF animation to export');
+            return;
+        }
+        
+        try {
+            this.notificationService.show('Generating animated GIF... This may take a moment.');
+            
+            await this.exportService.downloadAsGIF(
+                this.state.asciiFrames,
+                this.state.settings,
+                this.state.gifData.width,
+                this.state.gifData.height
+            );
+        } catch (error) {
+            console.error('GIF export error:', error);
+            this.notificationService.showError('Failed to export animated GIF');
+        }
+    }
+
+    /**
+     * Handle download all frames as ZIP
+     */
+    async handleDownloadFrames() {
+        if (!this.state.isGIF || !this.state.asciiFrames) {
+            this.notificationService.showError('No GIF frames to export');
+            return;
+        }
+        
+        try {
+            this.notificationService.show(`Preparing ${this.state.asciiFrames.length} frames for download...`);
+            
+            await this.exportService.downloadFramesAsZip(
+                this.state.asciiFrames,
+                this.state.settings,
+                this.state.gifData.width,
+                this.state.gifData.height
+            );
+        } catch (error) {
+            console.error('Frames export error:', error);
+            this.notificationService.showError('Failed to export frames');
+        }
     }
 }
 
