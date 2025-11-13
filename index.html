@@ -23,11 +23,28 @@
                     <button id="uploadBtn" class="primary-btn">
                         &gt; UPLOAD IMAGE FILE
                     </button>
+                    <button id="cameraBtn" class="primary-btn">
+                        &gt; USE CAMERA
+                    </button>
                     <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg" hidden>
+                </div>
+
+                <!-- Camera Section -->
+                <div id="cameraContainer" class="camera-container" hidden>
+                    <video id="videoElement" width="640" height="480" autoplay muted playsinline></video>
+                    <div class="camera-controls">
+                        <button id="captureBtn" class="secondary-btn">
+                            &gt; CAPTURE PHOTO
+                        </button>
+                        <button id="closeCameraBtn" class="secondary-btn">
+                            &gt; CLOSE CAMERA
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Canvas for image processing -->
                 <canvas id="imageCanvas" hidden></canvas>
+                <canvas id="captureCanvas" hidden></canvas>
             </section>
 
             <!-- Controls Section -->

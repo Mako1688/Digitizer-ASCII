@@ -7,6 +7,23 @@ export class UIController {
         this.elements = this.initializeElements();
         this.currentImage = null;
         this.asciiResult = null;
+        
+        // Check if camera elements exist and disable camera if not supported
+        this.checkCameraSupport();
+    }
+
+    /**
+     * Check if camera elements exist and browser supports camera
+     */
+    checkCameraSupport() {
+        if (!this.elements.cameraBtn || !this.elements.videoElement) {
+            return;
+        }
+        
+        // Check browser support
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            this.disableCameraButton();
+        }
     }
 
     /**
@@ -16,6 +33,11 @@ export class UIController {
         return {
             uploadBtn: document.getElementById('uploadBtn'),
             fileInput: document.getElementById('fileInput'),
+            cameraBtn: document.getElementById('cameraBtn'),
+            cameraContainer: document.getElementById('cameraContainer'),
+            videoElement: document.getElementById('videoElement'),
+            captureBtn: document.getElementById('captureBtn'),
+            closeCameraBtn: document.getElementById('closeCameraBtn'),
             generateBtn: document.getElementById('generateBtn'),
             resolutionSelect: document.getElementById('resolutionSelect'),
             resolutionValue: document.getElementById('resolutionValue'),
@@ -40,6 +62,12 @@ export class UIController {
         });
         
         this.elements.fileInput.addEventListener('change', callbacks.onFileUpload);
+        
+        // Camera event listeners
+        this.elements.cameraBtn.addEventListener('click', callbacks.onCameraOpen);
+        this.elements.captureBtn.addEventListener('click', callbacks.onCapture);
+        this.elements.closeCameraBtn.addEventListener('click', callbacks.onCameraClose);
+        
         this.elements.generateBtn.addEventListener('click', callbacks.onGenerate);
         this.elements.copyTextBtn.addEventListener('click', callbacks.onCopy);
         this.elements.downloadImageBtn.addEventListener('click', callbacks.onDownload);
@@ -247,5 +275,66 @@ export class UIController {
      */
     showError(message) {
         alert(message);
+    }
+
+    /**
+     * Show camera interface
+     */
+    showCameraInterface() {
+        this.elements.cameraContainer.hidden = false;
+        this.elements.cameraBtn.disabled = true;
+        this.elements.uploadBtn.disabled = true;
+        this.setCameraButtonsState(false, true); // capture disabled, close enabled
+    }
+
+    /**
+     * Hide camera interface
+     */
+    hideCameraInterface() {
+        this.elements.cameraContainer.hidden = true;
+        this.elements.cameraBtn.disabled = false;
+        this.elements.uploadBtn.disabled = false;
+        this.setCameraButtonsState(false, false); // both disabled
+    }
+
+    /**
+     * Set camera buttons state
+     * @param {boolean} captureEnabled - Enable/disable capture button
+     * @param {boolean} closeEnabled - Enable/disable close button
+     */
+    setCameraButtonsState(captureEnabled, closeEnabled) {
+        this.elements.captureBtn.disabled = !captureEnabled;
+        this.elements.closeCameraBtn.disabled = !closeEnabled;
+    }
+
+    /**
+     * Enable camera capture when video is ready
+     */
+    enableCameraCapture() {
+        this.setCameraButtonsState(true, true);
+    }
+
+    /**
+     * Disable camera button if not supported
+     */
+    disableCameraButton() {
+        this.elements.cameraBtn.disabled = true;
+        this.elements.cameraBtn.textContent = '> CAMERA NOT SUPPORTED';
+    }
+
+    /**
+     * Show camera loading state
+     */
+    showCameraLoading() {
+        this.elements.cameraBtn.textContent = '> LOADING CAMERA...';
+        this.elements.cameraBtn.disabled = true;
+    }
+
+    /**
+     * Reset camera button text
+     */
+    resetCameraButton() {
+        this.elements.cameraBtn.textContent = '> USE CAMERA';
+        this.elements.cameraBtn.disabled = false;
     }
 }

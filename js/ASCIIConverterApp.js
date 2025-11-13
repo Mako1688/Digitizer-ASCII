@@ -27,6 +27,34 @@ export class ASCIIConverterApp {
      */
     initialize() {
         this.setupEventHandlers();
+        this.checkCameraSupport();
+        this.setupCleanup();
+    }
+
+    /**
+     * Setup cleanup handlers
+     */
+    setupCleanup() {
+        // Clean up camera when page is closed or refreshed
+        window.addEventListener('beforeunload', () => {
+            this.imageProcessor.stopCamera();
+        });
+        
+        // Clean up camera when page loses focus (optional)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && this.imageProcessor.stream) {
+                this.handleCameraClose();
+            }
+        });
+    }
+
+    /**
+     * Check camera support and update UI accordingly
+     */
+    checkCameraSupport() {
+        if (!this.imageProcessor.isCameraSupported()) {
+            this.uiController.disableCameraButton();
+        }
     }
 
     /**
@@ -35,6 +63,9 @@ export class ASCIIConverterApp {
     setupEventHandlers() {
         const callbacks = {
             onFileUpload: (event) => this.handleFileUpload(event),
+            onCameraOpen: () => this.handleCameraOpen(),
+            onCapture: () => this.handleCapture(),
+            onCameraClose: () => this.handleCameraClose(),
             onGenerate: () => this.handleGenerate(),
             onCopy: () => this.handleCopy(),
             onDownload: () => this.handleDownload(),
@@ -69,6 +100,68 @@ export class ASCIIConverterApp {
         } catch (error) {
             this.uiController.showError('Error loading image. Please try a different file.');
         }
+    }
+
+    /**
+     * Handle camera open
+     */
+    async handleCameraOpen() {
+        try {
+            this.uiController.showCameraLoading();
+            
+            await this.imageProcessor.startCamera();
+            
+            this.uiController.showCameraInterface();
+            
+            // Wait for video to load and enable capture
+            const video = this.imageProcessor.videoElement;
+            
+            // Use a named function to avoid duplicate listeners
+            const onVideoReady = () => {
+                this.uiController.enableCameraCapture();
+                video.removeEventListener('loadedmetadata', onVideoReady);
+            };
+            
+            video.addEventListener('loadedmetadata', onVideoReady);
+            
+            // Fallback timeout in case loadedmetadata doesn't fire
+            setTimeout(() => {
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                    this.uiController.enableCameraCapture();
+                }
+            }, 2000);
+            
+        } catch (error) {
+            this.uiController.resetCameraButton();
+            this.uiController.showError('Camera access denied or not available: ' + error.message);
+        }
+    }
+
+    /**
+     * Handle photo capture from camera
+     */
+    async handleCapture() {
+        try {
+            this.currentImage = await this.imageProcessor.captureImageFromCamera();
+            
+            // Update UI
+            this.uiController.displayImagePreview(this.currentImage);
+            
+            // Close camera after successful capture
+            this.handleCameraClose();
+            
+        } catch (error) {
+            this.uiController.showError('Error capturing photo: ' + error.message);
+        }
+    }
+
+    /**
+     * Handle camera close
+     */
+    handleCameraClose() {
+        this.imageProcessor.stopCamera();
+        this.uiController.hideCameraInterface();
+        this.uiController.resetCameraButton();
     }
 
     /**
