@@ -94,11 +94,44 @@ class ImageProcessorService {
         
         console.log('[IMG-PROC] After resolution scaling:', charWidth, 'x', charHeight);
         
-        // Ensure minimum and maximum bounds for usability and performance
-        charWidth = Math.max(20, Math.min(500, charWidth));  // Increased max for more detail
-        charHeight = Math.max(10, Math.min(300, charHeight)); // Increased max for more detail
+        // Calculate original aspect ratio to preserve it during bounds checking
+        const originalAspectRatio = charWidth / charHeight;
+        console.log('[IMG-PROC] Original character aspect ratio:', originalAspectRatio.toFixed(3));
         
-        console.log('[IMG-PROC] After bounds checking:', charWidth, 'x', charHeight);
+        // Apply bounds checking while preserving aspect ratio
+        const maxWidth = 500;
+        const maxHeight = 300;
+        const minWidth = 20;
+        const minHeight = 10;
+        
+        // Check if we need to scale down to fit within bounds
+        let scaleDownFactor = 1;
+        if (charWidth > maxWidth) {
+            scaleDownFactor = Math.min(scaleDownFactor, maxWidth / charWidth);
+        }
+        if (charHeight > maxHeight) {
+            scaleDownFactor = Math.min(scaleDownFactor, maxHeight / charHeight);
+        }
+        
+        // Check if we need to scale up to meet minimum requirements
+        let scaleUpFactor = 1;
+        if (charWidth < minWidth) {
+            scaleUpFactor = Math.max(scaleUpFactor, minWidth / charWidth);
+        }
+        if (charHeight < minHeight) {
+            scaleUpFactor = Math.max(scaleUpFactor, minHeight / charHeight);
+        }
+        
+        // Apply the appropriate scaling factor
+        const finalScaleFactor = scaleDownFactor < 1 ? scaleDownFactor : scaleUpFactor;
+        
+        if (finalScaleFactor !== 1) {
+            charWidth = Math.floor(charWidth * finalScaleFactor);
+            charHeight = Math.floor(charHeight * finalScaleFactor);
+            console.log('[IMG-PROC] Applied proportional scaling factor:', finalScaleFactor.toFixed(3));
+        }
+        
+        console.log('[IMG-PROC] After proportional bounds checking:', charWidth, 'x', charHeight);
         
         // For very small images, ensure we get enough detail
         if (scaledWidth < 200 || scaledHeight < 200) {
@@ -224,12 +257,14 @@ class ImageProcessorService {
         let edgeIntensity = 0;
         let samples = 0;
         let transparentPixels = 0;
+        const totalPixels = sampleGrid * sampleGrid;
         
         for (let sy = 0; sy < sampleSize; sy += Math.floor(sampleSize / sampleGrid)) {
             for (let sx = 0; sx < sampleSize; sx += Math.floor(sampleSize / sampleGrid)) {
                 const pixel = this.getPixelData(sampleData, sx, sy, sampleSize);
                 
-                if (pixel.a > 128) { // Non-transparent pixel
+                // Much more lenient transparency detection - only truly transparent pixels
+                if (pixel.a > 50) { // Lower threshold for alpha - dark colors are not transparent
                     totalR += pixel.r;
                     totalG += pixel.g;
                     totalB += pixel.b;
@@ -259,10 +294,14 @@ class ImageProcessorService {
             a: Math.round(totalA / samples)
         };
 
+        // Only consider transparent if majority of pixels are actually transparent
+        const transparencyRatio = transparentPixels / totalPixels;
+        const isTransparent = transparencyRatio > 0.7; // 70% threshold for transparency
+
         return {
             ...avgColor,
             edgeIntensity: edgeIntensity / samples,
-            isTransparent: transparentPixels > samples
+            isTransparent: isTransparent
         };
     }    /**
      * Calculate edge intensity using Sobel operator

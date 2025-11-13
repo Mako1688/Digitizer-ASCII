@@ -97,7 +97,7 @@ class ASCIIGeneratorService {
                 pixelData = {
                     r: pixel.r, g: pixel.g, b: pixel.b, a: pixel.a,
                     edgeIntensity: 0,
-                    isTransparent: pixel.a < 128  // Only transparent if alpha is low, not if RGB is black
+                    isTransparent: pixel.a < 50  // Much lower threshold - only truly transparent pixels
                 };
             }
             
@@ -232,7 +232,7 @@ class ASCIIGeneratorService {
                 pixelData = {
                     r: pixel.r, g: pixel.g, b: pixel.b, a: pixel.a,
                     edgeIntensity: 0,
-                    isTransparent: pixel.a < 128  // Only transparent if alpha is low, not if RGB is black
+                    isTransparent: pixel.a < 50  // Much lower threshold - only truly transparent pixels
                 };
             }
             
@@ -240,9 +240,23 @@ class ASCIIGeneratorService {
             const brightness = this.characterService.rgbToBrightness(pixelData.r, pixelData.g, pixelData.b);
             const adjustedBrightness = this.imageProcessor.applyContrast(brightness, contrast);
             
-            // Use faster standard character selection unless edge enhancement is specifically enabled
+            // Debug logging for dark colors (limit output)
+            if (x === 0 && y % 20 === 0 && brightness < 0.2) {
+                console.log('[GENERATOR] Dark pixel at', x, y, ':', {
+                    rgb: [pixelData.r, pixelData.g, pixelData.b],
+                    alpha: pixelData.a,
+                    brightness: brightness.toFixed(3),
+                    adjustedBrightness: adjustedBrightness.toFixed(3),
+                    isTransparent: pixelData.isTransparent
+                });
+            }
+            
+            // Special handling for dark colors to ensure they get visible characters
             let char;
-            if (settings.edgeEnhanced && pixelData.edgeIntensity > 0) {
+            if (pixelData.isTransparent) {
+                // Truly transparent pixels get spaces
+                char = ' ';
+            } else if (settings.edgeEnhanced && pixelData.edgeIntensity > 0) {
                 char = this.characterService.selectEdgeAwareCharacter(
                     adjustedBrightness,
                     pixelData.edgeIntensity,
@@ -253,8 +267,17 @@ class ASCIIGeneratorService {
                 char = this.characterService.brightnessToChar(adjustedBrightness, inverted);
             }
             
-            // Use simple RGB color for better performance, skip expensive quantization
-            const color = 'rgb(' + pixelData.r + ', ' + pixelData.g + ', ' + pixelData.b + ')';
+            // Enhance dark colors for better visibility
+            let color = 'rgb(' + pixelData.r + ', ' + pixelData.g + ', ' + pixelData.b + ')';
+            
+            // For very dark pixels, ensure minimum visibility by brightening slightly
+            if (!pixelData.isTransparent && brightness < 0.15) {
+                const brightnessFactor = Math.max(1.3, 1 / Math.max(brightness, 0.05));
+                const enhancedR = Math.min(255, Math.round(pixelData.r * brightnessFactor));
+                const enhancedG = Math.min(255, Math.round(pixelData.g * brightnessFactor));
+                const enhancedB = Math.min(255, Math.round(pixelData.b * brightnessFactor));
+                color = 'rgb(' + enhancedR + ', ' + enhancedG + ', ' + enhancedB + ')';
+            }
             
             lineData.push({
                 char: char,

@@ -774,7 +774,7 @@ class ASCIIDigitizer {
      * Handle download as image
      */
     handleDownloadImage() {
-        // Calculate export dimensions based on ASCII content, not original image
+        // Calculate ASCII character dimensions for current generation
         const charDimensions = this.imageProcessor.calculateCharacterDimensions(
             this.state.currentImage.width * this.state.settings.imageSize,
             this.state.currentImage.height * this.state.settings.imageSize,
@@ -782,22 +782,23 @@ class ASCIIDigitizer {
             this.state.settings.resolution
         );
 
-        // Calculate optimal export dimensions for high-quality text
-        // Use a larger base size to ensure crisp text rendering
-        const baseFontSize = Math.max(16, this.state.settings.fontSize * 2); // At least 16px for clarity
-        const exportWidth = Math.max(1200, charDimensions.charWidth * baseFontSize * 0.6);
-        const exportHeight = Math.max(800, charDimensions.charHeight * baseFontSize * 1.2);
+        // Calculate export scale and preserve original aspect ratio
+        const exportScale = Math.max(1, this.state.settings.imageSize * 2);
+        const exportWidth = this.state.currentImage.width * exportScale;
+        const exportHeight = this.state.currentImage.height * exportScale;
 
         console.log('[APP] Download image request:', {
             originalImage: {
                 width: this.state.currentImage.width,
-                height: this.state.currentImage.height
+                height: this.state.currentImage.height,
+                aspectRatio: (this.state.currentImage.width / this.state.currentImage.height).toFixed(3)
             },
             charDimensions,
-            baseFontSize,
+            exportScale,
             exportDimensions: {
                 width: exportWidth,
-                height: exportHeight
+                height: exportHeight,
+                aspectRatio: (exportWidth / exportHeight).toFixed(3)
             },
             settings: this.state.settings
         });
@@ -807,7 +808,8 @@ class ASCIIDigitizer {
             this.state.coloredData,
             this.state.settings,
             exportWidth,
-            exportHeight
+            exportHeight,
+            charDimensions
         );
     }
 

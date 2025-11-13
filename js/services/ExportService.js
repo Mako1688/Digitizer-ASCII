@@ -43,8 +43,9 @@ class ExportService {
      * @param {Object} settings - Export settings
      * @param {number} scaledWidth - Target image width
      * @param {number} scaledHeight - Target image height
+     * @param {Object} charDimensions - Character grid dimensions from generation
      */
-    downloadAsImage(asciiText, coloredData, settings, scaledWidth, scaledHeight) {
+    downloadAsImage(asciiText, coloredData, settings, scaledWidth, scaledHeight, charDimensions) {
         console.log('[EXPORT] Starting image download...');
         console.log('[EXPORT] Input parameters:', {
             scaledWidth,
@@ -59,7 +60,8 @@ class ExportService {
             coloredData, 
             settings, 
             scaledWidth, 
-            scaledHeight
+            scaledHeight,
+            charDimensions
         );
         
         console.log('[EXPORT] Canvas created:', {
@@ -97,91 +99,173 @@ class ExportService {
      * @param {Object} settings - Export settings (colored, imageSize)
      * @param {number} scaledWidth - Target image width
      * @param {number} scaledHeight - Target image height
+     * @param {Object} charDimensions - Character grid dimensions from generation
      * @returns {HTMLCanvasElement} Canvas with rendered ASCII art
      */
-    createCanvasForExport(asciiText, coloredData, settings, scaledWidth, scaledHeight) {
+    createCanvasForExport(asciiText, coloredData, settings, scaledWidth, scaledHeight, charDimensions) {
         console.log('[EXPORT] Creating canvas for export...');
         console.log('[EXPORT] Target dimensions:', { scaledWidth, scaledHeight });
+        console.log('[EXPORT] Character dimensions:', charDimensions);
 
+        // Create high-resolution canvas for crisp rendering
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2); // Limit to 2x for performance
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        // Calculate optimal font size first to determine actual needed canvas size
-        const minFontSize = 12; // Minimum readable font size
-        let fontSize = this.calculateOptimalFontSize(asciiText, scaledWidth, scaledHeight);
-        fontSize = Math.max(fontSize, minFontSize); // Ensure minimum readable size
-        console.log('[EXPORT] Calculated font size:', fontSize, '(minimum enforced:', minFontSize + ')');
-
-        // Calculate actual content dimensions based on ASCII text
-        const lines = asciiText.split('\n').filter(line => line.length > 0);
-        const maxLineLength = Math.max(...lines.map(line => line.length));
-        const charWidth = fontSize * 0.6; // Monospace character width
-        const lineHeight = fontSize * 1.2; // Line spacing
-        const actualContentWidth = Math.ceil(maxLineLength * charWidth);
-        const actualContentHeight = Math.ceil(lines.length * lineHeight);
-
-        console.log('[EXPORT] Actual content dimensions:', {
-            actualContentWidth,
-            actualContentHeight,
-            lines: lines.length,
-            maxLineLength,
-            charWidth,
-            lineHeight
+        // Set logical canvas size with high-DPI support
+        canvas.width = scaledWidth * pixelRatio;
+        canvas.height = scaledHeight * pixelRatio;
+        
+        // Set display size for proper scaling
+        canvas.style.width = scaledWidth + 'px';
+        canvas.style.height = scaledHeight + 'px';
+        
+        // Scale context to match pixel ratio for crisp rendering
+        ctx.scale(pixelRatio, pixelRatio);
+        
+        console.log('[EXPORT] Canvas created with pixel ratio:', { 
+            pixelRatio, 
+            physicalSize: `${canvas.width}x${canvas.height}`,
+            logicalSize: `${scaledWidth}x${scaledHeight}`
         });
-
-        // Use actual content dimensions, but ensure minimum canvas size for quality
-        const minCanvasWidth = Math.max(800, actualContentWidth);
-        const minCanvasHeight = Math.max(600, actualContentHeight);
-        const finalWidth = Math.min(minCanvasWidth, Math.max(actualContentWidth, scaledWidth));
-        const finalHeight = Math.min(minCanvasHeight, Math.max(actualContentHeight, scaledHeight));
-
-        console.log('[EXPORT] Final canvas dimensions:', { finalWidth, finalHeight });
         
-        // Set canvas to actual final size (no DPI scaling that causes blur)
-        canvas.width = finalWidth;
-        canvas.height = finalHeight;
+        // Use the character dimensions from ASCII generation, not the text parsing
+        // This ensures we scale based on what was actually generated
+        const charWidth = charDimensions.charWidth;
+        const charHeight = charDimensions.charHeight;
         
-        console.log('[EXPORT] Canvas setup complete:', {
-            canvasWidth: canvas.width,
-            canvasHeight: canvas.height,
-            noDPIScaling: true
+        // Define target content coverage (percentage of canvas the ASCII should fill)
+        const TARGET_COVERAGE_WIDTH = 0.90;  // 90% width coverage
+        const TARGET_COVERAGE_HEIGHT = 0.90; // 90% height coverage
+        
+        // Calculate font size to achieve target coverage
+        // We want the ASCII content to fill a specific percentage of the canvas
+        const charWidthRatio = 0.6; // Monospace character width
+        const lineHeightRatio = 1.2; // Line spacing
+        
+        // Calculate font sizes needed for target coverage
+        const fontSizeForWidthCoverage = (scaledWidth * TARGET_COVERAGE_WIDTH) / (charWidth * charWidthRatio);
+        const fontSizeForHeightCoverage = (scaledHeight * TARGET_COVERAGE_HEIGHT) / (charHeight * lineHeightRatio);
+        
+        // Use the smaller font size to ensure both dimensions fit within target coverage
+        let fontSize = Math.min(fontSizeForWidthCoverage, fontSizeForHeightCoverage);
+        
+        // Apply reasonable bounds but allow much larger sizes for high-res exports
+        const minFontSize = 8;
+        const maxFontSize = Math.max(200, scaledWidth / 8); // Increased max for better scaling
+        fontSize = Math.max(minFontSize, Math.min(maxFontSize, fontSize));
+        
+        // Ensure font size is integer for crisp rendering
+        fontSize = Math.round(fontSize);
+        
+        console.log('[EXPORT] Font size calculation for target coverage:', {
+            charGridWidth: charWidth,
+            charGridHeight: charHeight,
+            targetCanvas: `${scaledWidth}x${scaledHeight}`,
+            targetCoverage: `${(TARGET_COVERAGE_WIDTH*100).toFixed(0)}%x${(TARGET_COVERAGE_HEIGHT*100).toFixed(0)}%`,
+            fontSizeForWidthCoverage: fontSizeForWidthCoverage.toFixed(2),
+            fontSizeForHeightCoverage: fontSizeForHeightCoverage.toFixed(2),
+            selectedFontSize: fontSize,
+            minBound: minFontSize,
+            maxBound: maxFontSize,
+            pixelRatio
+        });
+        
+        // Calculate actual content dimensions with this font size
+        const actualContentWidth = charWidth * fontSize * charWidthRatio;
+        const actualContentHeight = charHeight * fontSize * lineHeightRatio;
+        
+        // Center the content on the canvas
+        const offsetX = (scaledWidth - actualContentWidth) / 2;
+        const offsetY = (scaledHeight - actualContentHeight) / 2;
+        
+        console.log('[EXPORT] Content positioning:', {
+            actualContentWidth: actualContentWidth.toFixed(2),
+            actualContentHeight: actualContentHeight.toFixed(2),
+            offsetX: offsetX.toFixed(2),
+            offsetY: offsetY.toFixed(2),
+            canvasSize: `${scaledWidth}x${scaledHeight}`,
+            contentFillRatio: {
+                width: (actualContentWidth / scaledWidth * 100).toFixed(1) + '%',
+                height: (actualContentHeight / scaledHeight * 100).toFixed(1) + '%'
+            }
         });
         
         // Set background
         ctx.fillStyle = CONFIG.CANVAS.BACKGROUND_COLOR;
-        ctx.fillRect(0, 0, finalWidth, finalHeight);
+        ctx.fillRect(0, 0, scaledWidth, scaledHeight);
         
-        // Set text properties for crisp rendering
-        ctx.font = `${fontSize}px ${CONFIG.CANVAS.FONT_FAMILY}`;
-        ctx.textBaseline = 'top'; // Use 'top' for more predictable positioning
-        ctx.textAlign = 'left';
-        ctx.imageSmoothingEnabled = false; // Crisp pixel art style
+        // Critical settings for crisp, sharp text rendering
+        this.setupCrispTextRendering(ctx, fontSize);
         
-        // Additional properties for sharp text rendering
-        ctx.textRenderingOptimization = 'optimizeLegibility';
-        if (ctx.fontKerning) ctx.fontKerning = 'none'; // Disable kerning for monospace
-        
-        // Force crisp rendering by setting pixel boundaries
-        ctx.translate(0.5, 0.5); // Align to pixel grid
-        
-        console.log('[EXPORT] Text properties set:', {
+        console.log('[EXPORT] Canvas setup complete:', {
+            canvasWidth: canvas.width,
+            canvasHeight: canvas.height,
+            fontSize,
             font: ctx.font,
-            baseline: ctx.textBaseline,
-            align: ctx.textAlign,
-            smoothing: ctx.imageSmoothingEnabled,
-            pixelAligned: true
+            renderingOptimizations: 'Applied'
         });
 
-        // Render ASCII art
+        // Render ASCII art with proper positioning
         if (settings.colored && coloredData && coloredData.length > 0) {
             console.log('[EXPORT] Rendering colored ASCII...');
-            this.renderColoredASCII(ctx, coloredData, fontSize);
+            this.renderColoredASCII(ctx, coloredData, fontSize, offsetX, offsetY);
         } else {
             console.log('[EXPORT] Rendering monochrome ASCII...');
-            this.renderMonochromeASCII(ctx, asciiText, fontSize);
+            this.renderMonochromeASCII(ctx, asciiText, fontSize, offsetX, offsetY);
         }
         
         return canvas;
+    }
+
+    /**
+     * Setup optimal canvas context properties for crisp text rendering
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} fontSize - Font size in pixels
+     */
+    setupCrispTextRendering(ctx, fontSize) {
+        // Disable all smoothing and anti-aliasing for pixel-perfect rendering
+        ctx.imageSmoothingEnabled = false;
+        ctx.webkitImageSmoothingEnabled = false;
+        ctx.mozImageSmoothingEnabled = false;
+        ctx.msImageSmoothingEnabled = false;
+        ctx.oImageSmoothingEnabled = false;
+        
+        // Set high-quality text rendering properties
+        ctx.textRenderingOptimization = 'optimizeSpeed'; // Prioritize sharpness over smoothness
+        if (ctx.fontKerning) ctx.fontKerning = 'none'; // Disable kerning for monospace consistency
+        
+        // Use integer font size and ensure font is loaded
+        const integerFontSize = Math.round(fontSize);
+        
+        // Use high-quality monospace fonts with explicit font loading
+        const fontFamilies = [
+            '"SF Mono"', // macOS system font
+            '"Cascadia Code"', // Windows Terminal font  
+            '"Fira Code"', // Popular programming font
+            '"Courier New"', // Fallback
+            '"Monaco"', // macOS fallback
+            '"Menlo"', // macOS fallback
+            '"Consolas"', // Windows fallback
+            'monospace' // Ultimate fallback
+        ];
+        
+        ctx.font = `${integerFontSize}px ${fontFamilies.join(', ')}`;
+        
+        // Set precise text alignment
+        ctx.textBaseline = 'top'; // Most predictable baseline
+        ctx.textAlign = 'left';
+        
+        // Don't translate for high-DPI contexts as pixel alignment is handled differently
+        // The scaling already handles pixel-perfect alignment
+        
+        console.log('[EXPORT] Text rendering setup:', {
+            fontSize: integerFontSize,
+            font: ctx.font,
+            smoothing: false,
+            fontFamilies: fontFamilies.length,
+            optimization: 'crisp'
+        });
     }
 
     /**
@@ -236,8 +320,10 @@ class ExportService {
      * @param {CanvasRenderingContext2D} ctx - Canvas context
      * @param {Array<Array<Object>>} coloredData - Colored ASCII data
      * @param {number} fontSize - Font size in pixels
+     * @param {number} offsetX - X offset for centering
+     * @param {number} offsetY - Y offset for centering
      */
-    renderColoredASCII(ctx, coloredData, fontSize) {
+    renderColoredASCII(ctx, coloredData, fontSize, offsetX = 0, offsetY = 0) {
         const charWidth = fontSize * 0.6; // Proper monospace character width
         const lineHeight = fontSize * 1.2; // Line spacing
         
@@ -245,6 +331,8 @@ class ExportService {
             fontSize,
             charWidth,
             lineHeight,
+            offsetX: offsetX.toFixed(2),
+            offsetY: offsetY.toFixed(2),
             totalLines: coloredData.length,
             firstLineLength: coloredData[0]?.length || 0
         });
@@ -253,8 +341,12 @@ class ExportService {
             lineData.forEach((charData, charIndex) => {
                 if (charData.char && charData.char.trim()) { // Only render non-whitespace
                     ctx.fillStyle = charData.color;
-                    const x = charIndex * charWidth;
-                    const y = lineIndex * lineHeight;
+                    
+                    // Calculate pixel-aligned position for crisp rendering
+                    const x = Math.round(offsetX + charIndex * charWidth);
+                    const y = Math.round(offsetY + lineIndex * lineHeight);
+                    
+                    // Render with crisp positioning
                     ctx.fillText(charData.char, x, y);
                 }
             });
@@ -268,8 +360,10 @@ class ExportService {
      * @param {CanvasRenderingContext2D} ctx - Canvas context
      * @param {string} asciiText - ASCII art text
      * @param {number} fontSize - Font size in pixels
+     * @param {number} offsetX - X offset for centering
+     * @param {number} offsetY - Y offset for centering
      */
-    renderMonochromeASCII(ctx, asciiText, fontSize) {
+    renderMonochromeASCII(ctx, asciiText, fontSize, offsetX = 0, offsetY = 0) {
         ctx.fillStyle = CONFIG.CANVAS.TEXT_COLOR;
         const lines = asciiText.split('\n').filter(line => line.length > 0);
         const lineHeight = fontSize * 1.2; // Line spacing
@@ -277,6 +371,8 @@ class ExportService {
         console.log('[EXPORT] Rendering monochrome ASCII with:', {
             fontSize,
             lineHeight,
+            offsetX: offsetX.toFixed(2),
+            offsetY: offsetY.toFixed(2),
             totalLines: lines.length,
             maxLineLength: Math.max(...lines.map(l => l.length)),
             fillStyle: ctx.fillStyle
@@ -284,8 +380,11 @@ class ExportService {
         
         lines.forEach((line, index) => {
             if (line.trim()) { // Only render non-empty lines
-                const x = 0;
-                const y = index * lineHeight;
+                // Calculate pixel-aligned position for crisp rendering
+                const x = Math.round(offsetX);
+                const y = Math.round(offsetY + index * lineHeight);
+                
+                // Render with crisp positioning
                 ctx.fillText(line, x, y);
             }
         });

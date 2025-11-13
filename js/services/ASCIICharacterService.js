@@ -29,24 +29,40 @@ class ASCIICharacterService {
 
     /**
      * Convert a brightness value (0-1) to an ASCII character
+     * Enhanced for better dark color handling
      * @param {number} brightness - Normalized brightness value (0-1)
      * @param {boolean} inverted - Whether to use inverted mapping
      * @returns {string} The corresponding ASCII character
      */
     brightnessToChar(brightness, inverted = false) {
         const chars = this.getCharacterSet(inverted);
-        const charIndex = Math.floor(brightness * (chars.length - 1));
+        
+        // Apply gamma correction for better dark color representation
+        // This makes dark values more distinguishable
+        const gammaCorrectedBrightness = Math.pow(brightness, 0.8);
+        
+        // Ensure minimum visibility - don't use spaces for any color above 10% brightness
+        let adjustedBrightness = gammaCorrectedBrightness;
+        if (brightness > 0.1 && adjustedBrightness > 0.95) {
+            adjustedBrightness = 0.95; // Prevent mapping to spaces for non-transparent colors
+        }
+        
+        const charIndex = Math.floor(adjustedBrightness * (chars.length - 1));
         return chars[charIndex];
     }
 
     /**
      * Select character based on brightness and edge intensity (edge-aware selection)
+     * Enhanced for better dark color handling
      * @param {number} brightness - Normalized brightness value (0-1)
      * @param {number} edgeIntensity - Edge intensity (0-1)
      * @param {boolean} inverted - Whether to use inverted mapping
      * @returns {string} The best ASCII character for the region
      */
     selectEdgeAwareCharacter(brightness, edgeIntensity, inverted = false) {
+        // Apply gamma correction for dark colors
+        const gammaCorrectedBrightness = Math.pow(brightness, 0.8);
+        
         // Determine character complexity based on edge intensity
         let charSet;
         if (edgeIntensity > 0.7) {
@@ -57,7 +73,7 @@ class ASCIICharacterService {
             charSet = this.edgeChars.low;
         } else if (edgeIntensity > 0.1) {
             charSet = this.edgeChars.minimal;
-        } else if (brightness > 0.1) {
+        } else if (brightness > 0.05) { // Lower threshold for using sparse characters
             charSet = this.edgeChars.sparse;
         } else {
             charSet = this.edgeChars.light;
@@ -68,7 +84,13 @@ class ASCIICharacterService {
             charSet = [...charSet].reverse();
         }
         
-        const charIndex = Math.floor(brightness * (charSet.length - 1));
+        // Ensure we don't map dark colors to spaces
+        let adjustedBrightness = gammaCorrectedBrightness;
+        if (brightness > 0.1 && adjustedBrightness > 0.95) {
+            adjustedBrightness = 0.95;
+        }
+        
+        const charIndex = Math.floor(adjustedBrightness * (charSet.length - 1));
         return charSet[charIndex];
     }
 
