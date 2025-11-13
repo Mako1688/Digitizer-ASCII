@@ -75,10 +75,14 @@ export class UIController {
      */
     updateDownloadQualityDisplay(quality) {
         let qualityText = 'High';
-        if (quality <= 8) qualityText = 'Low';
+        if (quality <= 6) qualityText = 'Very Low';
+        else if (quality <= 8) qualityText = 'Low';
         else if (quality <= 12) qualityText = 'High';
         else if (quality <= 16) qualityText = 'Very High';
-        else qualityText = 'Ultra High';
+        else if (quality <= 20) qualityText = 'Ultra High';
+        else if (quality <= 24) qualityText = 'Maximum';
+        else if (quality <= 32) qualityText = 'Extreme';
+        else qualityText = 'Professional';
         this.elements.downloadQualityValue.textContent = qualityText;
     }
 

@@ -108,9 +108,13 @@ export class ExportService {
      * @returns {string} Quality name
      */
     getQualityName(fontSize) {
+        if (fontSize <= 6) return 'verylow';
         if (fontSize <= 8) return 'low';
         if (fontSize <= 12) return 'high';
         if (fontSize <= 16) return 'veryhigh';
-        return 'ultra';
+        if (fontSize <= 20) return 'ultra';
+        if (fontSize <= 24) return 'maximum';
+        if (fontSize <= 32) return 'extreme';
+        return 'professional';
     }
 }
