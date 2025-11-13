@@ -23,37 +23,7 @@
                     <button id="uploadBtn" class="primary-btn">
                         &gt; UPLOAD IMAGE FILE
                     </button>
-                    <button id="cameraBtn" class="primary-btn">
-                        &gt; USE CAMERA
-                    </button>
-                    <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg,image/gif" hidden>
-                </div>
-
-                <!-- Camera Preview -->
-                <div id="cameraContainer" class="camera-container" hidden>
-                    <video id="videoElement" autoplay playsinline></video>
-                    <div class="camera-controls">
-                        <button id="captureBtn" class="primary-btn">&gt; TAKE PHOTO</button>
-                        <button id="closeCameraBtn" class="secondary-btn">&gt; CLOSE CAMERA</button>
-                    </div>
-                </div>
-
-                <!-- GIF Info Panel -->
-                <div id="gifInfoPanel" class="gif-info-panel" hidden>
-                    <div class="gif-info-content">
-                        <div class="gif-thumbnail-container">
-                            <img id="gifThumbnail" class="gif-thumbnail" alt="GIF Preview">
-                        </div>
-                        <div class="gif-details">
-                            <p><span class="label">&gt; FILE TYPE:</span> <span id="gifFileType">ANIMATED GIF</span></p>
-                            <p><span class="label">&gt; DIMENSIONS:</span> <span id="gifDimensions">0 x 0</span></p>
-                            <p><span class="label">&gt; FRAME COUNT:</span> <span id="gifFrameCount">0</span></p>
-                            <p><span class="label">&gt; FILE SIZE:</span> <span id="gifFileSize">0 KB</span></p>
-                            <p id="gifWarning" class="gif-warning" hidden>
-                                <span class="label">⚠ WARNING:</span> Large GIF file - processing may take time
-                            </p>
-                        </div>
-                    </div>
+                    <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg" hidden>
                 </div>
 
                 <!-- Canvas for image processing -->
@@ -63,56 +33,27 @@
             <!-- Controls Section -->
             <section class="controls-section">
                 <h2>[ CONVERSION SETTINGS ]</h2>
-                <div class="control-grid">
-                    <div class="control-group">
-                        <label for="imageSizeSelect">
-                            &gt; IMAGE SCALE: <span id="imageSizeValue">1x</span>
-                        </label>
-                        <select id="imageSizeSelect" class="size-select">
-                            <option value="0.25">0.25x (Quarter)</option>
-                            <option value="0.5">0.5x (Half)</option>
-                            <option value="1" selected>1x (Original)</option>
-                            <option value="2">2x (Double)</option>
-                            <option value="4">4x (Quad)</option>
-                        </select>
-                    </div>
-
-                    <div class="control-group">
-                        <label for="resolutionSlider">
-                            &gt; DETAIL LEVEL: <span id="resolutionValue">100</span>%
-                        </label>
-                        <input type="range" id="resolutionSlider" min="50" max="200" value="100" step="10">
-                    </div>
-
-                    <div class="control-group">
-                        <label for="fontSizeSlider">
-                            &gt; CHARACTER SIZE: <span id="fontSizeValue">8</span>px
-                        </label>
-                        <input type="range" id="fontSizeSlider" min="4" max="16" value="8" step="1">
-                    </div>
-
-                    <div class="control-group">
-                        <label for="contrastSlider">
-                            &gt; CONTRAST: <span id="contrastValue">1.0</span>x
-                        </label>
-                        <input type="range" id="contrastSlider" min="0.5" max="2.0" value="1.0" step="0.1">
-                    </div>
-
-                    <div class="control-group">
-                        <label>
-                            <input type="checkbox" id="colorToggle">
-                            &gt; USE COLORS
-                        </label>
-                    </div>
-
-                    <div class="control-group">
-                        <label>
-                            <input type="checkbox" id="invertToggle">
-                            &gt; INVERT BRIGHTNESS
-                        </label>
-                    </div>
+                
+                <div class="control-group">
+                    <label for="resolutionSelect">
+                        &gt; RESOLUTION SCALE: <span id="resolutionValue">1x</span>
+                    </label>
+                    <select id="resolutionSelect" class="size-select">
+                        <option value="0.25">0.25x (Very Low Detail)</option>
+                        <option value="0.5">0.5x (Low Detail)</option>
+                        <option value="1" selected>1x (Original)</option>
+                        <option value="2">2x (High Detail)</option>
+                        <option value="4">4x (Very High Detail)</option>
+                    </select>
                 </div>
-
+                
+                <div class="control-group">
+                    <label for="pixelSizeSlider">
+                        &gt; CHARACTER BLOCK SIZE: <span id="pixelSizeValue">1</span>px per char
+                    </label>
+                    <input type="range" id="pixelSizeSlider" min="1" max="10" value="1" step="1">
+                </div>
+                
                 <div class="button-group">
                     <button id="generateBtn" class="primary-btn" disabled>
                         &gt;&gt; GENERATE ASCII ART
@@ -132,17 +73,8 @@
                     </div>
                     <div class="preview-box">
                         <h3>&gt; ASCII ART RESULT</h3>
-                        <div class="zoom-controls">
-                            <button id="zoomOutBtn" class="zoom-btn" disabled>&gt; ZOOM OUT</button>
-                            <span id="zoomLevel">100%</span>
-                            <button id="zoomInBtn" class="zoom-btn" disabled>&gt; ZOOM IN</button>
-                            <button id="fitBtn" class="zoom-btn" disabled>&gt; FIT TO VIEW</button>
-                        </div>
                         <div id="asciiPreview" class="ascii-preview">
                             <p class="placeholder-text">[ WAITING FOR CONVERSION ]</p>
-                            <div id="frameCounter" class="frame-counter" hidden>
-                                FRAME: <span id="currentFrame">1</span> / <span id="totalFrames">1</span>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -151,6 +83,19 @@
             <!-- Export Section -->
             <section class="export-section">
                 <h2>[ SAVE & EXPORT ]</h2>
+                
+                <div class="control-group">
+                    <label for="downloadQualitySelect">
+                        &gt; DOWNLOAD QUALITY: <span id="downloadQualityValue">High</span>
+                    </label>
+                    <select id="downloadQualitySelect" class="size-select">
+                        <option value="8">Low (8px font)</option>
+                        <option value="12" selected>High (12px font)</option>
+                        <option value="16">Very High (16px font)</option>
+                        <option value="20">Ultra High (20px font)</option>
+                    </select>
+                </div>
+                
                 <div class="button-group">
                     <button id="copyTextBtn" class="secondary-btn" disabled>
                         &gt; COPY TEXT
@@ -158,51 +103,16 @@
                     <button id="downloadImageBtn" class="secondary-btn" disabled>
                         &gt; DOWNLOAD AS IMAGE
                     </button>
-                    <button id="downloadTextBtn" class="secondary-btn" disabled>
-                        &gt; DOWNLOAD AS TEXT
-                    </button>
-                </div>
-                
-                <!-- GIF Export Options -->
-                <div id="gifExportSection" class="gif-export-section" hidden>
-                    <h3>&gt; ANIMATED GIF EXPORT OPTIONS</h3>
-                    <div class="button-group">
-                        <button id="downloadGifBtn" class="secondary-btn">
-                            &gt; EXPORT AS ANIMATED GIF
-                        </button>
-                        <button id="downloadFramesBtn" class="secondary-btn">
-                            &gt; DOWNLOAD ALL FRAMES (ZIP)
-                        </button>
-                    </div>
                 </div>
             </section>
         </main>
 
         <footer>
-            <p>[ ASCII CONVERTER v2.0 ] - [ ENHANCED ] - [ READY ]</p>
+            <p>[ ASCII CONVERTER v1.0 ] - [ SIMPLE ] - [ READY ]</p>
         </footer>
     </div>
 
-    <!-- Configuration and Constants -->
-    <script src="js/config.js"></script>
-    
-    <!-- External Libraries -->
-    <script src="js/libs/omggif.js"></script>
-    
-    <!-- Services (in dependency order) -->
-    <script src="js/services/NotificationService.js"></script>
-    <script src="js/services/LoadingService.js"></script>
-    <script src="js/services/ASCIICharacterService.js"></script>
-    <script src="js/services/ImageProcessorService.js"></script>
-    <script src="js/services/GIFParserService.js"></script>
-    <script src="js/services/CameraService.js"></script>
-    <script src="js/services/ASCIIGeneratorService.js"></script>
-    <script src="js/services/ExportService.js"></script>
-    
-    <!-- Controllers -->
-    <script src="js/controllers/UIController.js"></script>
-    
-    <!-- Main Application -->
+    <!-- Main Application Script -->
     <script src="js/app.js"></script>
 </body>
 </html>

@@ -1,873 +1,455 @@
-// ASCII Image Digitizer - Main Application
-// Coordinates all services using dependency injection
-// Follows SOLID principles: Single Responsibility, Dependency Inversion
+// ASCII Image Converter - Simple Implementation
+// Clean slate implementation for colored ASCII art generation
 
-class ASCIIDigitizer {
+console.log('ASCII Image Converter initialized - Ready for fresh implementation');
+
+class ASCIIConverter {
     constructor() {
-        // Initialize services with dependency injection
-        this.notificationService = new NotificationService();
-        this.loadingService = new LoadingService();
-        this.characterService = new ASCIICharacterService();
-        this.imageProcessor = new ImageProcessorService();
-        this.gifParser = new GIFParserService();
-        this.cameraService = new CameraService();
-        this.asciiGenerator = new ASCIIGeneratorService(
-            this.characterService, 
-            this.imageProcessor,
-            this.loadingService  // Inject LoadingService following Dependency Injection principle
-        );
-        this.exportService = new ExportService(this.notificationService);
+        // ASCII characters arranged by visual density (light to dark)
+        this.ASCII_CHARS = ' .\'`^",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
         
-        // Application state
-        this.state = {
-            currentImage: null,
-            currentImageUrl: null,
-            asciiText: '',
-            coloredData: null,
-            settings: { ...CONFIG.DEFAULT_SETTINGS },
-            // GIF-specific state
-            isGIF: false,
-            gifData: null,
-            gifFrames: [],
-            currentFrameIndex: 0,
-            animationId: null,
-            isPlaying: false,
-            // Generation state
-            isGenerating: false
+        // Configuration
+        this.MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+        this.SQUARE_FONT_SIZE = 8; // Base font size for square characters
+        this.currentImage = null;
+        this.currentImageData = null;
+        this.asciiResult = null;
+        
+        // DOM elements
+        this.elements = {
+            uploadBtn: document.getElementById('uploadBtn'),
+            fileInput: document.getElementById('fileInput'),
+            generateBtn: document.getElementById('generateBtn'),
+            resolutionSelect: document.getElementById('resolutionSelect'),
+            resolutionValue: document.getElementById('resolutionValue'),
+            pixelSizeSlider: document.getElementById('pixelSizeSlider'),
+            pixelSizeValue: document.getElementById('pixelSizeValue'),
+            downloadQualitySelect: document.getElementById('downloadQualitySelect'),
+            downloadQualityValue: document.getElementById('downloadQualityValue'),
+            originalPreview: document.getElementById('originalPreview'),
+            asciiPreview: document.getElementById('asciiPreview'),
+            copyTextBtn: document.getElementById('copyTextBtn'),
+            downloadImageBtn: document.getElementById('downloadImageBtn'),
+            canvas: document.getElementById('imageCanvas')
         };
         
-        // Initialize UI controller with event handlers
-        this.uiController = new UIController(this.createEventHandlers());
+        this.setupEventListeners();
     }
-
-    /**
-     * Create event handlers object for UI controller
-     * Uses arrow functions to maintain 'this' context
-     * @returns {Object} Event handlers object
-     */
-    createEventHandlers() {
-        return {
-            onFileUpload: (e) => this.handleFileUpload(e),
-            onCameraOpen: () => this.handleCameraOpen(),
-            onCapturePhoto: () => this.handleCapturePhoto(),
-            onCameraClose: () => this.handleCameraClose(),
-            onGenerate: () => this.handleGenerate(),
-            onCopyText: () => this.handleCopyText(),
-            onDownloadImage: () => this.handleDownloadImage(),
-            onDownloadText: () => this.handleDownloadText(),
-            onDownloadGif: () => this.handleDownloadGif(),
-            onDownloadFrames: () => this.handleDownloadFrames(),
-            onImageSizeChange: (e) => this.handleImageSizeChange(e),
-            onResolutionChange: (e) => this.handleResolutionChange(e),
-            onFontSizeChange: (e) => this.handleFontSizeChange(e),
-            onContrastChange: (e) => this.handleContrastChange(e),
-            onColorToggle: (e) => this.handleColorToggle(e),
-            onInvertToggle: (e) => this.handleInvertToggle(e),
-            onZoomIn: () => this.handleZoomAdjustment(CONFIG.ZOOM.STEP),
-            onZoomOut: () => this.handleZoomAdjustment(-CONFIG.ZOOM.STEP),
-            onFitToView: () => this.handleFitToView(),
-            onPinchZoom: (newZoom) => this.handlePinchZoom(newZoom),
-            getCurrentZoom: () => this.state.settings.zoom,
-            hasASCIIArt: () => this.state.asciiText !== ''
-        };
+    
+    setupEventListeners() {
+        this.elements.uploadBtn.addEventListener('click', () => {
+            this.elements.fileInput.click();
+        });
+        
+        this.elements.fileInput.addEventListener('change', (e) => {
+            this.handleFileUpload(e);
+        });
+        
+        this.elements.generateBtn.addEventListener('click', () => {
+            this.generateASCII();
+        });
+        
+        this.elements.copyTextBtn.addEventListener('click', () => {
+            this.copyToClipboard();
+        });
+        
+        this.elements.downloadImageBtn.addEventListener('click', () => {
+            this.downloadAsImage();
+        });
+        
+        this.elements.resolutionSelect.addEventListener('change', (e) => {
+            this.elements.resolutionValue.textContent = e.target.value + 'x';
+        });
+        
+        this.elements.pixelSizeSlider.addEventListener('input', (e) => {
+            const pixelSize = parseInt(e.target.value);
+            this.elements.pixelSizeValue.textContent = pixelSize;
+            
+            // Update the description based on pixel size
+            const description = pixelSize === 1 ? 'px per char' : 
+                               pixelSize <= 3 ? 'px per char (Fine)' :
+                               pixelSize <= 6 ? 'px per char (Medium)' :
+                               'px per char (Chunky)';
+            this.elements.pixelSizeValue.textContent = `${pixelSize} ${description}`;
+        });
+        
+        this.elements.downloadQualitySelect.addEventListener('change', (e) => {
+            const quality = parseInt(e.target.value);
+            let qualityText = 'High';
+            if (quality <= 8) qualityText = 'Low';
+            else if (quality <= 12) qualityText = 'High';
+            else if (quality <= 16) qualityText = 'Very High';
+            else qualityText = 'Ultra High';
+            this.elements.downloadQualityValue.textContent = qualityText;
+        });
+        
+        // Add window resize listener to recalculate font size
+        window.addEventListener('resize', () => {
+            if (this.asciiResult) {
+                this.calculateAndApplyOptimalFontSize();
+            }
+        });
     }
-
-    /**
-     * Handle file upload event
-     */
+    
     async handleFileUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
         
-        if (!this.imageProcessor.isValidImageType(file)) {
-            this.notificationService.showError(
-                'Please upload a valid image file (PNG, JPG, JPEG, or GIF)'
-            );
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file.');
+            return;
+        }
+        
+        // Validate file size
+        if (file.size > this.MAX_FILE_SIZE) {
+            alert(`File size exceeds 100MB limit. Current size: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
             return;
         }
         
         try {
-            // Check if file is a GIF
-            console.log('[DEBUG] File uploaded:', file.name, 'Type:', file.type);
-            const isGIF = this.gifParser.isGIF(file);
-            console.log('[DEBUG] Is GIF?', isGIF);
+            // Load and display image
+            const imageUrl = URL.createObjectURL(file);
+            await this.loadImage(imageUrl);
             
-            if (isGIF) {
-                console.log('[DEBUG] Calling handleGIFUpload...');
-                await this.handleGIFUpload(file);
-            } else {
-                console.log('[DEBUG] Loading as static image...');
-                const dataUrl = await this.imageProcessor.readFileAsDataURL(file);
-                await this.loadImage(dataUrl);
-            }
+            // Enable generate button
+            this.elements.generateBtn.disabled = false;
+            
+            // Reset export buttons
+            this.elements.copyTextBtn.disabled = true;
+            this.elements.downloadImageBtn.disabled = true;
+            
+            // Clear previous ASCII result
+            this.elements.asciiPreview.innerHTML = '<p class="placeholder-text">[ READY FOR CONVERSION ]</p>';
+            
         } catch (error) {
-            console.error('File upload error:', error);
-            this.notificationService.showError('Failed to load image file');
+            console.error('Error loading image:', error);
+            alert('Error loading image. Please try a different file.');
         }
     }
-
-    /**
-     * Handle GIF file upload
-     * @param {File} file - GIF file
-     */
-    async handleGIFUpload(file) {
-        try {
-            console.log('[DEBUG] handleGIFUpload started for:', file.name);
-            
-            // Show warning for large files
-            if (this.gifParser.isLargeFile(file)) {
-                const fileSize = this.gifParser.formatFileSize(file.size);
-                console.log('[DEBUG] Large file warning:', fileSize);
-                this.notificationService.show(
-                    `Large GIF file detected (${fileSize}). Processing may take time...`
-                );
-            }
-            
-            // Parse GIF and extract all frames
-            this.notificationService.show('Extracting GIF frames...');
-            console.log('[DEBUG] Starting GIF parsing...');
-            const gifData = await this.gifParser.parseGIF(file);
-            console.log('[DEBUG] GIF parsed successfully:', gifData);
-            console.log('[DEBUG] Frame count:', gifData.frameCount);
-            console.log('[DEBUG] Is animated:', gifData.isAnimated);
-            
-            // Store GIF data
-            this.state.isGIF = true;
-            this.state.gifData = gifData;
-            this.state.gifFrames = gifData.frames;
-            this.state.currentFrameIndex = 0;
-            console.log('[DEBUG] State updated with', gifData.frames.length, 'frames');
-            
-            // Load first frame as current image
-            const firstFrame = gifData.frames[0];
-            console.log('[DEBUG] Loading first frame...');
-            const image = await this.imageProcessor.loadImage(firstFrame.dataUrl);
-            this.state.currentImage = image;
-            this.state.currentImageUrl = firstFrame.dataUrl;
-            
-            // Create and display thumbnail
-            console.log('[DEBUG] Creating thumbnail...');
-            const thumbnail = await this.gifParser.createThumbnail(firstFrame);
-            
-            // Update UI with GIF info
-            console.log('[DEBUG] Showing GIF info panel...');
-            this.uiController.showGIFInfo({
-                isAnimated: gifData.isAnimated,
-                width: gifData.width,
-                height: gifData.height,
-                frameCount: gifData.frameCount,
-                fileSize: this.gifParser.formatFileSize(gifData.fileSize),
-                thumbnail: thumbnail,
-                showWarning: this.gifParser.isLargeFile(file)
-            });
-            
-            this.updateOriginalPreview();
-            
-            // Start original GIF preview animation if animated
-            if (gifData.isAnimated) {
-                this.startOriginalGIFPreview();
-            }
-            
-            this.uiController.setGenerateButtonEnabled(true);
-            
-            this.notificationService.show(
-                `GIF loaded successfully! ${gifData.frameCount} frames detected.`
-            );
-            console.log('[DEBUG] GIF upload complete!');
-        } catch (error) {
-            console.error('[ERROR] GIF upload error:', error);
-            console.error('[ERROR] Error stack:', error.stack);
-            this.notificationService.showError('Failed to load GIF file');
-        }
+    
+    async loadImage(imageUrl) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                this.currentImage = img;
+                
+                // Display in preview
+                this.elements.originalPreview.innerHTML = '';
+                this.elements.originalPreview.appendChild(img);
+                
+                console.log(`Image loaded: ${img.width}x${img.height}`);
+                resolve();
+            };
+            img.onerror = reject;
+            img.src = imageUrl;
+        });
     }
-
-    /**
-     * Handle camera open request
-     */
-    async handleCameraOpen() {
-        try {
-            await this.cameraService.openCamera();
-        } catch (error) {
-            this.notificationService.showError(error.message);
-        }
-    }
-
-    /**
-     * Handle photo capture from camera
-     */
-    async handleCapturePhoto() {
-        try {
-            const videoElement = this.cameraService.getVideoElement();
-            const dataUrl = this.imageProcessor.captureFromVideo(videoElement);
-            await this.loadImage(dataUrl);
-            this.cameraService.closeCamera();
-        } catch (error) {
-            console.error('Capture error:', error);
-            this.notificationService.showError('Failed to capture photo');
-        }
-    }
-
-    /**
-     * Handle camera close request
-     */
-    handleCameraClose() {
-        this.cameraService.closeCamera();
-    }
-
-    /**
-     * Load and display an image
-     */
-    async loadImage(dataUrl) {
-        try {
-            const image = await this.imageProcessor.loadImage(dataUrl);
-            this.state.currentImage = image;
-            this.state.currentImageUrl = dataUrl;
-            
-            this.updateOriginalPreview();
-            this.uiController.setGenerateButtonEnabled(true);
-        } catch (error) {
-            console.error('Image load error:', error);
-            this.notificationService.showError('Failed to load image');
-        }
-    }
-
-    /**
-     * Update the original image preview
-     */
-    updateOriginalPreview() {
-        // Auto-fit image to container, no need for calculated dimensions
-        this.uiController.updateOriginalPreview(
-            this.state.currentImageUrl,
-            this.state.currentImage.naturalWidth,  // Pass natural dimensions for reference
-            this.state.currentImage.naturalHeight
-        );
-    }
-
-    /**
-     * Handle ASCII generation
-     */
-    async handleGenerate() {
-        console.log('[HANDLE-GENERATE] Starting generation process');
-        console.log('[HANDLE-GENERATE] Current image:', !!this.state.currentImage);
-        console.log('[HANDLE-GENERATE] Is generating:', this.state.isGenerating);
+    
+    async generateASCII() {
+        if (!this.currentImage) return;
         
-        if (!this.state.currentImage || this.state.isGenerating) {
-            console.log('[HANDLE-GENERATE] Aborting - no image or already generating');
-            return;
-        }
+        const scale = parseFloat(this.elements.resolutionSelect.value);
+        console.log(`Generating ASCII with ${scale}x resolution...`);
+        
+        // Show progress
+        this.elements.asciiPreview.innerHTML = '<p class="placeholder-text">[ GENERATING ASCII ART... ]</p>';
+        this.elements.generateBtn.disabled = true;
         
         try {
-            console.log('[HANDLE-GENERATE] Setting generating state to true');
-            this.state.isGenerating = true;
-            this.uiController.setGenerateButtonEnabled(false);
+            // Calculate target dimensions
+            const targetWidth = Math.round(this.currentImage.width * scale);
+            const targetHeight = Math.round(this.currentImage.height * scale);
             
-            // Stop any existing animation
-            this.stopAnimation();
+            console.log(`Target dimensions: ${targetWidth}x${targetHeight}`);
             
-            if (this.state.isGIF && this.state.gifFrames.length > 1) {
-                console.log('[HANDLE-GENERATE] Processing GIF with', this.state.gifFrames.length, 'frames');
-                // Generate ASCII for all GIF frames
-                await this.generateGIFASCII();
-            } else {
-                console.log('[HANDLE-GENERATE] Processing single frame');
-                // Generate single frame ASCII
-                await this.generateSingleFrameASCII();
-            }
+            // Get image data
+            const imageData = this.getImageData(targetWidth, targetHeight);
             
-            console.log('[HANDLE-GENERATE] Generation complete, enabling controls');
-            // Enable export and zoom controls
-            this.uiController.setExportButtonsEnabled(true);
-            this.uiController.setZoomControlsEnabled(true);
+            // Generate ASCII with progress updates
+            await this.processImageToASCII(imageData, targetWidth, targetHeight, scale);
             
         } catch (error) {
-            console.error('[HANDLE-GENERATE] ASCII generation error:', error);
-            this.notificationService.showError('Failed to generate ASCII art');
+            console.error('Error generating ASCII:', error);
+            this.elements.asciiPreview.innerHTML = '<p class="placeholder-text">[ ERROR GENERATING ASCII ART ]</p>';
         } finally {
-            console.log('[HANDLE-GENERATE] Cleanup - setting generating to false and hiding loading');
-            this.state.isGenerating = false;
-            this.uiController.setGenerateButtonEnabled(true);
-            this.loadingService.hide();
+            this.elements.generateBtn.disabled = false;
         }
     }
-
-    /**
-     * Generate ASCII for single image
-     */
-    async generateSingleFrameASCII() {
-        console.log('[ASCII] Starting single frame ASCII generation');
-        this.loadingService.show('Generating ASCII Art...', 'Preparing image data');
+    
+    getImageData(width, height) {
+        const canvas = this.elements.canvas;
+        const ctx = canvas.getContext('2d');
         
-        console.log('[ASCII] Image natural dimensions:', this.state.currentImage.naturalWidth, 'x', this.state.currentImage.naturalHeight);
-        console.log('[ASCII] Settings:', {
-            fontSize: this.state.settings.fontSize,
-            resolution: this.state.settings.resolution,
-            colored: this.state.settings.colored,
-            inverted: this.state.settings.inverted,
-            contrast: this.state.settings.contrast
-        });
+        canvas.width = width;
+        canvas.height = height;
         
-        // Use the natural image dimensions for character calculation
-        console.log('[ASCII] Calculating character dimensions...');
-        const charDimensions = this.imageProcessor.calculateCharacterDimensions(
-            this.state.currentImage.naturalWidth,
-            this.state.currentImage.naturalHeight,
-            this.state.settings.fontSize,
-            this.state.settings.resolution
-        );
+        // Draw image to canvas
+        ctx.drawImage(this.currentImage, 0, 0, width, height);
         
-        console.log('[ASCII] Character dimensions calculated:', charDimensions);
+        return ctx.getImageData(0, 0, width, height);
+    }
+    
+    async processImageToASCII(imageData, width, height, scale) {
+        const { data } = imageData;
+        const chars = this.ASCII_CHARS;
+        const charCount = chars.length - 1;
         
-        console.log('[ASCII] Processing image to character size...');
-        const imageData = this.imageProcessor.processImageToCharacterSize(
-            this.state.currentImage,
-            charDimensions.charWidth,
-            charDimensions.charHeight
-        );
+        // Get character block size
+        const pixelSize = parseInt(this.elements.pixelSizeSlider.value);
         
-        console.log('[ASCII] ImageData processed:', imageData.width, 'x', imageData.height);
-        console.log('[ASCII] Starting ASCII generation type:', this.state.settings.colored ? 'colored' : 'monochrome');
+        // Calculate new dimensions based on pixel block size
+        const asciiWidth = Math.floor(width / pixelSize);
+        const asciiHeight = Math.floor(height / pixelSize);
         
-        if (this.state.settings.colored) {
-            console.log('[ASCII] Calling generateColoredASCII...');
-            await this.generateColoredASCII(imageData, charDimensions);
-        } else {
-            console.log('[ASCII] Calling generateMonochromeASCII...');
-            await this.generateMonochromeASCII(imageData, charDimensions);
+        let asciiHTML = '';
+        const totalBlocks = asciiWidth * asciiHeight;
+        let processedBlocks = 0;
+        
+        // Process each character block
+        for (let y = 0; y < asciiHeight; y++) {
+            let rowHTML = '';
+            
+            for (let x = 0; x < asciiWidth; x++) {
+                // Sample a block of pixels and average them
+                let totalR = 0, totalG = 0, totalB = 0, totalA = 0;
+                let samplesCount = 0;
+                
+                // Sample the pixel block
+                for (let blockY = y * pixelSize; blockY < Math.min((y + 1) * pixelSize, height); blockY++) {
+                    for (let blockX = x * pixelSize; blockX < Math.min((x + 1) * pixelSize, width); blockX++) {
+                        const pixelIndex = (blockY * width + blockX) * 4;
+                        totalR += data[pixelIndex];
+                        totalG += data[pixelIndex + 1];
+                        totalB += data[pixelIndex + 2];
+                        totalA += data[pixelIndex + 3];
+                        samplesCount++;
+                    }
+                }
+                
+                // Average the sampled pixels
+                const avgR = Math.round(totalR / samplesCount);
+                const avgG = Math.round(totalG / samplesCount);
+                const avgB = Math.round(totalB / samplesCount);
+                const avgA = Math.round(totalA / samplesCount);
+                
+                // Calculate brightness (luminance)
+                const brightness = (avgR * 0.299 + avgG * 0.587 + avgB * 0.114) / 255;
+                
+                // Add slight variation for visual complexity
+                const variation = (Math.random() - 0.5) * 0.1;
+                const adjustedBrightness = Math.max(0, Math.min(1, brightness + variation));
+                
+                // Select character based on brightness
+                const charIndex = Math.floor(adjustedBrightness * charCount);
+                const char = chars[charIndex];
+                
+                // Use averaged pixel color
+                const color = avgA > 0 ? `rgb(${avgR},${avgG},${avgB})` : 'transparent';
+                
+                rowHTML += `<span style="color:${color}">${char}</span>`;
+                processedBlocks++;
+            }
+            
+            asciiHTML += `<div>${rowHTML}</div>`;
+            
+            // Yield control periodically for progress updates
+            if (y % 20 === 0) {
+                const progress = Math.round((processedBlocks / totalBlocks) * 100);
+                this.elements.asciiPreview.innerHTML = `<p class="placeholder-text">[ GENERATING... ${progress}% ]</p>`;
+                await this.delay(1);
+            }
         }
         
-        console.log('[ASCII] Single frame ASCII generation complete');
+        // Store result and display
+        this.asciiResult = {
+            html: asciiHTML,
+            width: asciiWidth,  // Use actual ASCII dimensions after block sizing
+            height: asciiHeight, // Use actual ASCII dimensions after block sizing
+            scale: scale,
+            pixelSize: pixelSize,
+            originalWidth: this.currentImage.width,
+            originalHeight: this.currentImage.height,
+            processedWidth: width,  // Keep track of the processed image dimensions
+            processedHeight: height
+        };
+        
+        this.displayASCIIResult();
     }
-
-    /**
-     * Generate ASCII for all GIF frames
-     */
-    async generateGIFASCII() {
-        const frameCount = this.state.gifFrames.length;
-        this.loadingService.show(
-            `Processing ${frameCount} frames...`,
-            'Preparing animation data'
-        );
+    
+    displayASCIIResult() {
+        // Set the HTML content first
+        this.elements.asciiPreview.innerHTML = this.asciiResult.html;
         
-        // Use the natural frame dimensions for character calculation
-        const firstFrame = this.state.gifFrames[0];
-        const charDimensions = this.imageProcessor.calculateCharacterDimensions(
-            firstFrame.width || this.state.currentImage.naturalWidth,
-            firstFrame.height || this.state.currentImage.naturalHeight,
-            this.state.settings.fontSize,
-            this.state.settings.resolution
-        );
+        // Use a small delay to ensure the content is rendered and container dimensions are available
+        setTimeout(() => {
+            this.calculateAndApplyOptimalFontSize();
+        }, 10);
         
-        // Generate ASCII for each frame
-        const asciiFrames = [];
+        // Enable export buttons
+        this.elements.copyTextBtn.disabled = false;
+        this.elements.downloadImageBtn.disabled = false;
         
-        for (let i = 0; i < frameCount; i++) {
-            const frame = this.state.gifFrames[i];
-            const imageData = frame.imageData;
-            
-            // Update progress
-            const frameProgress = (i / frameCount) * 100;
-            this.loadingService.updateProgress(
-                frameProgress, 
-                `Processing frame ${i + 1} of ${frameCount}`
-            );
-            
-            // Create image element from frame data for high-res sampling
-            const frameImage = new Image();
-            frameImage.src = frame.dataUrl;
-            await new Promise(resolve => {
-                frameImage.onload = resolve;
+        console.log(`ASCII art generated: ${this.asciiResult.width}x${this.asciiResult.height} characters`);
+    }
+    
+    calculateAndApplyOptimalFontSize() {
+        // Get the actual container dimensions
+        const containerRect = this.elements.asciiPreview.getBoundingClientRect();
+        const containerWidth = containerRect.width - 30; // Account for padding
+        const containerHeight = Math.max(300, containerRect.height - 30); // Ensure minimum height
+        
+        // Use the actual ASCII dimensions (after block sizing)
+        const asciiWidth = this.asciiResult.width;
+        const asciiHeight = this.asciiResult.height;
+        
+        // Calculate how much space each character needs
+        const maxFontWidthFit = containerWidth / asciiWidth;
+        const maxFontHeightFit = containerHeight / asciiHeight;
+        
+        // Use the smaller of the two to ensure it fits in both dimensions
+        // Courier New is roughly square, so use the limiting dimension
+        let optimalFontSize = Math.floor(Math.min(maxFontWidthFit, maxFontHeightFit));
+        
+        // Clamp font size to reasonable bounds
+        optimalFontSize = Math.max(1, Math.min(16, optimalFontSize));
+        
+        console.log(`Container: ${containerWidth.toFixed(1)}x${containerHeight.toFixed(1)}, ASCII: ${asciiWidth}x${asciiHeight}, Block Size: ${this.asciiResult.pixelSize}px, Font: ${optimalFontSize}px`);
+        
+        // Apply styling for proper ASCII display
+        this.elements.asciiPreview.style.fontSize = `${optimalFontSize}px`;
+        this.elements.asciiPreview.style.lineHeight = `${optimalFontSize}px`;
+        this.elements.asciiPreview.style.fontFamily = 'Courier New, monospace';
+        this.elements.asciiPreview.style.display = 'block';
+        this.elements.asciiPreview.style.whiteSpace = 'nowrap'; // Prevent wrapping
+        this.elements.asciiPreview.style.overflow = 'auto';
+        this.elements.asciiPreview.style.textAlign = 'left';
+        this.elements.asciiPreview.style.width = '100%';
+        this.elements.asciiPreview.style.height = 'auto';
+        
+        // If the font is very small, show a message
+        if (optimalFontSize <= 2) {
+            console.warn('Font size very small - ASCII art may be hard to read. Consider using lower resolution or larger character block size.');
+        }
+        
+        // Scroll the ASCII preview into view
+        setTimeout(() => {
+            this.elements.asciiPreview.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'nearest',
+                inline: 'start'
             });
-            
-            if (this.state.settings.colored) {
-                const result = await this.asciiGenerator.generateColored(
-                    imageData,
-                    charDimensions.charWidth,
-                    charDimensions.charHeight,
-                    this.state.settings,
-                    frameImage  // Pass original frame image
-                );
-                asciiFrames.push({
-                    coloredData: result.coloredData,
-                    asciiText: result.asciiText,
-                    delay: frame.delay || CONFIG.GIF.DEFAULT_FRAME_DELAY
-                });
-            } else {
-                const asciiText = await this.asciiGenerator.generateMonochrome(
-                    imageData,
-                    charDimensions.charWidth,
-                    charDimensions.charHeight,
-                    this.state.settings,
-                    frameImage  // Pass original frame image
-                );
-                asciiFrames.push({
-                    asciiText: asciiText,
-                    delay: frame.delay || CONFIG.GIF.DEFAULT_FRAME_DELAY
-                });
-            }
-            
-            // Yield control periodically
-            if (i % 5 === 0) {
-                await this.loadingService.yield();
-            }
-        }
-        
-        // Store ASCII frames
-        this.state.asciiFrames = asciiFrames;
-        this.state.currentFrameIndex = 0;
-        
-        // Display first frame
-        this.displayFrame(0);
-        
-        // Show frame counter
-        this.uiController.showFrameCounter(this.state.gifFrames.length);
-        this.uiController.updateFrameCounter(1, this.state.gifFrames.length);
-        
-        // Show GIF export options
-        this.uiController.showGIFExportOptions();
-        
-        // Start animation
-        this.startAnimation();
-        
-        this.notificationService.show('GIF ASCII art generated successfully!');
+        }, 100);
     }
-
-    /**
-     * Display a specific frame of the animation
-     * @param {number} frameIndex - Index of frame to display
-     */
-    displayFrame(frameIndex) {
-        const frame = this.state.asciiFrames[frameIndex];
-        
-        if (this.state.settings.colored && frame.coloredData) {
-            const fragment = this.asciiGenerator.createColoredHTMLElements(
-                frame.coloredData,
-                this.state.settings.fontSize
-            );
-            this.uiController.updateASCIIPreviewHTML(fragment);
-            this.state.coloredData = frame.coloredData;
-        } else {
-            this.uiController.updateASCIIPreviewText(frame.asciiText);
-            this.state.coloredData = null;
-        }
-        
-        this.state.asciiText = frame.asciiText;
-        this.updateASCIIDisplay();
-        
-        // Update frame counter
-        this.uiController.updateFrameCounter(
-            frameIndex + 1,
-            this.state.gifFrames.length
-        );
+    
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
-
-    /**
-     * Start animation playback
-     */
-    startAnimation() {
-        if (this.state.isPlaying || !this.state.asciiFrames) return;
-        
-        this.state.isPlaying = true;
-        this.state.currentFrameIndex = 0;
-        
-        const playNextFrame = () => {
-            if (!this.state.isPlaying) return;
-            
-            const frame = this.state.asciiFrames[this.state.currentFrameIndex];
-            this.displayFrame(this.state.currentFrameIndex);
-            
-            // Move to next frame
-            this.state.currentFrameIndex = 
-                (this.state.currentFrameIndex + 1) % this.state.asciiFrames.length;
-            
-            // Schedule next frame
-            const delay = Math.max(
-                CONFIG.GIF.MIN_FRAME_DELAY,
-                Math.min(CONFIG.GIF.MAX_FRAME_DELAY, frame.delay)
-            );
-            
-            this.state.animationId = setTimeout(playNextFrame, delay);
-        };
-        
-        playNextFrame();
-    }
-
-    /**
-     * Stop animation playback
-     */
-    stopAnimation() {
-        if (this.state.animationId) {
-            clearTimeout(this.state.animationId);
-            this.state.animationId = null;
-        }
-        this.state.isPlaying = false;
-    }
-
-    /**
-     * Start original GIF preview animation
-     */
-    startOriginalGIFPreview() {
-        if (!this.state.gifFrames || this.state.gifFrames.length <= 1) return;
-        
-        // Stop any existing preview animation
-        this.stopOriginalGIFPreview();
-        
-        let previewFrameIndex = 0;
-        
-        const playNextPreviewFrame = () => {
-            const frame = this.state.gifFrames[previewFrameIndex];
-            
-            // Update the original preview image
-            const originalPreview = document.querySelector('.image-preview img');
-            if (originalPreview) {
-                originalPreview.src = frame.dataUrl;
-            }
-            
-            // Move to next frame
-            previewFrameIndex = (previewFrameIndex + 1) % this.state.gifFrames.length;
-            
-            // Schedule next frame
-            this.state.previewAnimationId = setTimeout(playNextPreviewFrame, frame.delay);
-        };
-        
-        playNextPreviewFrame();
-    }
-
-    /**
-     * Stop original GIF preview animation
-     */
-    stopOriginalGIFPreview() {
-        if (this.state.previewAnimationId) {
-            clearTimeout(this.state.previewAnimationId);
-            this.state.previewAnimationId = null;
-        }
-    }
-
-    /**
-     * Generate monochrome ASCII art
-     */
-    async generateMonochromeASCII(imageData, charDimensions) {
-        console.log('[ASCII-MONO] Starting monochrome generation with dimensions:', charDimensions);
-        
-        const result = await this.asciiGenerator.generateMonochrome(
-            imageData,
-            charDimensions.charWidth,
-            charDimensions.charHeight,
-            this.state.settings,
-            this.state.currentImage  // Pass original high-res image
-        );
-        
-        console.log('[ASCII-MONO] Generation complete, result length:', result ? result.length : 0);
-        
-        this.state.asciiText = result;
-        this.state.coloredData = null;
-        
-        console.log('[ASCII-MONO] Updating UI with ASCII text...');
-        // Update UI immediately
-        this.uiController.updateASCIIPreviewText(this.state.asciiText);
-        this.updateASCIIDisplay();
-        
-        console.log('[ASCII-MONO] UI updated, setting progress to 100%');
-        // Ensure loading is hidden after UI update
-        this.loadingService.updateProgress(100, 'Complete');
-        await this.loadingService.yield(); // Give UI one frame to update
-        console.log('[ASCII-MONO] Monochrome generation finished');
-    }
-
-    /**
-     * Generate colored ASCII art
-     */
-    async generateColoredASCII(imageData, charDimensions) {
-        console.log('[ASCII-COLOR] Starting colored generation with dimensions:', charDimensions);
-        
-        const result = await this.asciiGenerator.generateColored(
-            imageData,
-            charDimensions.charWidth,
-            charDimensions.charHeight,
-            this.state.settings,
-            this.state.currentImage  // Pass original high-res image
-        );
-        
-        console.log('[ASCII-COLOR] Generation complete, result text length:', result ? result.asciiText?.length : 0);
-        console.log('[ASCII-COLOR] Colored data rows:', result ? result.coloredData?.length : 0);
-        
-        this.state.asciiText = result.asciiText;
-        this.state.coloredData = result.coloredData;
-        
-        console.log('[ASCII-COLOR] Creating colored HTML elements...');
-        // Create and update colored HTML immediately
-        const fragment = this.asciiGenerator.createColoredHTMLElements(
-            this.state.coloredData,
-            this.state.settings.fontSize
-        );
-        
-        console.log('[ASCII-COLOR] Updating UI with colored HTML...');
-        this.uiController.updateASCIIPreviewHTML(fragment);
-        this.updateASCIIDisplay();
-        
-        console.log('[ASCII-COLOR] UI updated, setting progress to 100%');
-        // Ensure loading is hidden after UI update
-        this.loadingService.updateProgress(100, 'Complete');
-        await this.loadingService.yield(); // Give UI one frame to update
-        console.log('[ASCII-COLOR] Colored generation finished');
-    }
-
-    /**
-     * Update ASCII display with current zoom and font size
-     */
-    updateASCIIDisplay() {
-        const scaledFontSize = this.state.settings.fontSize * 
-                              (this.state.settings.zoom / 100);
-        
-        this.uiController.updateASCIIFontSize(scaledFontSize);
-        
-        // Update colored ASCII font size if applicable
-        if (this.state.settings.colored && this.state.coloredData) {
-            const asciiElement = this.uiController.getASCIIPreviewElement();
-            this.asciiGenerator.updateColoredFontSize(asciiElement, scaledFontSize);
-        }
-    }
-
-    /**
-     * Handle image size change
-     */
-    handleImageSizeChange(event) {
-        this.state.settings.imageSize = parseFloat(event.target.value);
-        this.uiController.updateImageSizeDisplay(`${event.target.value}x`);
-        
-        if (this.state.currentImage) {
-            this.updateOriginalPreview();
-        }
-    }
-
-    /**
-     * Handle resolution slider change
-     */
-    handleResolutionChange(event) {
-        this.state.settings.resolution = parseInt(event.target.value);
-        this.uiController.updateResolutionDisplay(event.target.value);
-    }
-
-    /**
-     * Handle font size slider change
-     */
-    handleFontSizeChange(event) {
-        this.state.settings.fontSize = parseInt(event.target.value);
-        this.uiController.updateFontSizeDisplay(event.target.value);
-        this.updateASCIIDisplay();
-    }
-
-    /**
-     * Handle contrast slider change
-     */
-    handleContrastChange(event) {
-        this.state.settings.contrast = parseFloat(event.target.value);
-        this.uiController.updateContrastDisplay(event.target.value);
-    }
-
-    /**
-     * Handle color toggle change
-     */
-    handleColorToggle(event) {
-        this.state.settings.colored = event.target.checked;
-        
-        // Regenerate if ASCII art exists
-        if (this.state.asciiText) {
-            this.handleGenerate();
-        }
-    }
-
-    /**
-     * Handle invert toggle change
-     */
-    handleInvertToggle(event) {
-        this.state.settings.inverted = event.target.checked;
-    }
-
-    /**
-     * Handle zoom adjustment
-     */
-    handleZoomAdjustment(delta) {
-        this.state.settings.zoom = Math.max(
-            CONFIG.ZOOM.MIN,
-            Math.min(CONFIG.ZOOM.MAX, this.state.settings.zoom + delta)
-        );
-        
-        this.uiController.updateZoomDisplay(this.state.settings.zoom);
-        this.updateASCIIDisplay();
-    }
-
-    /**
-     * Handle pinch zoom gesture
-     */
-    handlePinchZoom(newZoom) {
-        this.state.settings.zoom = newZoom;
-        this.uiController.updateZoomDisplay(this.state.settings.zoom);
-        this.updateASCIIDisplay();
-    }
-
-    /**
-     * Handle fit to view
-     */
-    handleFitToView() {
-        const asciiElement = this.uiController.getASCIIPreviewElement();
-        const containerWidth = asciiElement.clientWidth - CONFIG.PREVIEW.PADDING;
-        const containerHeight = asciiElement.clientHeight - CONFIG.PREVIEW.PADDING;
-        
-        if (this.state.asciiText && containerWidth > 0 && containerHeight > 0) {
-            const lines = this.state.asciiText.split('\n').filter(line => line.length > 0);
-            if (lines.length === 0) return;
-            
-            const maxLineLength = Math.max(...lines.map(line => line.length));
-            const lineCount = lines.length;
-            
-            // Calculate the current font size in pixels
-            const currentCharWidth = this.state.settings.fontSize * CONFIG.CHAR_ASPECT_RATIO;
-            const currentCharHeight = this.state.settings.fontSize;
-            
-            // Calculate required space for ASCII art
-            const requiredWidth = maxLineLength * currentCharWidth;
-            const requiredHeight = lineCount * currentCharHeight;
-            
-            // Calculate zoom factors needed to fit
-            const widthZoomFactor = containerWidth / requiredWidth;
-            const heightZoomFactor = containerHeight / requiredHeight;
-            
-            // Use the smaller zoom factor to ensure it fits in both dimensions
-            let optimalZoom = Math.min(widthZoomFactor, heightZoomFactor) * 100;
-            
-            // Ensure zoom is within valid bounds and not too small
-            optimalZoom = Math.max(CONFIG.ZOOM.MIN, Math.min(CONFIG.ZOOM.MAX, optimalZoom));
-            
-            // Round to nearest step for cleaner values
-            optimalZoom = Math.round(optimalZoom / CONFIG.ZOOM.STEP) * CONFIG.ZOOM.STEP;
-            
-            this.state.settings.zoom = optimalZoom;
-            this.uiController.updateZoomDisplay(this.state.settings.zoom);
-            this.updateASCIIDisplay();
-            
-            // Haptic feedback on mobile
-            if (MOBILE_REGEX.test(navigator.userAgent) && navigator.vibrate) {
-                navigator.vibrate(CONFIG.NOTIFICATION.VIBRATION_DURATION);
-            }
-        }
-    }
-
-    /**
-     * Handle copy to clipboard
-     */
-    async handleCopyText() {
-        try {
-            await this.exportService.copyToClipboard(this.state.asciiText);
-        } catch (error) {
-            this.notificationService.showError(error.message);
-        }
-    }
-
-    /**
-     * Handle download as text
-     */
-    handleDownloadText() {
-        this.exportService.downloadAsText(this.state.asciiText);
-    }
-
-    /**
-     * Handle download as image
-     */
-    handleDownloadImage() {
-        // Calculate ASCII character dimensions for current generation
-        const charDimensions = this.imageProcessor.calculateCharacterDimensions(
-            this.state.currentImage.width * this.state.settings.imageSize,
-            this.state.currentImage.height * this.state.settings.imageSize,
-            this.state.settings.fontSize,
-            this.state.settings.resolution
-        );
-
-        // Calculate export scale and preserve original aspect ratio
-        const exportScale = Math.max(1, this.state.settings.imageSize * 2);
-        const exportWidth = this.state.currentImage.width * exportScale;
-        const exportHeight = this.state.currentImage.height * exportScale;
-
-        console.log('[APP] Download image request:', {
-            originalImage: {
-                width: this.state.currentImage.width,
-                height: this.state.currentImage.height,
-                aspectRatio: (this.state.currentImage.width / this.state.currentImage.height).toFixed(3)
-            },
-            charDimensions,
-            exportScale,
-            exportDimensions: {
-                width: exportWidth,
-                height: exportHeight,
-                aspectRatio: (exportWidth / exportHeight).toFixed(3)
-            },
-            settings: this.state.settings
-        });
-        
-        this.exportService.downloadAsImage(
-            this.state.asciiText,
-            this.state.coloredData,
-            this.state.settings,
-            exportWidth,
-            exportHeight,
-            charDimensions
-        );
-    }
-
-    /**
-     * Handle download as animated GIF
-     */
-    async handleDownloadGif() {
-        if (!this.state.isGIF || !this.state.asciiFrames) {
-            this.notificationService.showError('No GIF animation to export');
-            return;
-        }
+    
+    async copyToClipboard() {
+        if (!this.asciiResult) return;
         
         try {
-            this.notificationService.show('Generating animated GIF... This may take a moment.');
+            // Extract plain text from HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = this.asciiResult.html;
+            const plainText = tempDiv.textContent || tempDiv.innerText;
             
-            await this.exportService.downloadAsGIF(
-                this.state.asciiFrames,
-                this.state.settings,
-                this.state.gifData.width,
-                this.state.gifData.height
-            );
+            await navigator.clipboard.writeText(plainText);
+            
+            // Show feedback
+            const originalText = this.elements.copyTextBtn.textContent;
+            this.elements.copyTextBtn.textContent = '> COPIED!';
+            setTimeout(() => {
+                this.elements.copyTextBtn.textContent = originalText;
+            }, 1000);
+            
         } catch (error) {
-            console.error('GIF export error:', error);
-            this.notificationService.showError('Failed to export animated GIF');
+            console.error('Error copying to clipboard:', error);
+            alert('Error copying to clipboard');
         }
     }
-
-    /**
-     * Handle download all frames as ZIP
-     */
-    async handleDownloadFrames() {
-        if (!this.state.isGIF || !this.state.asciiFrames) {
-            this.notificationService.showError('No GIF frames to export');
-            return;
-        }
+    
+    downloadAsImage() {
+        if (!this.asciiResult) return;
         
         try {
-            this.notificationService.show(`Preparing ${this.state.asciiFrames.length} frames for download...`);
+            // Get the selected download quality (font size)
+            const baseFontSize = parseInt(this.elements.downloadQualitySelect.value);
             
-            await this.exportService.downloadFramesAsZip(
-                this.state.asciiFrames,
-                this.state.settings,
-                this.state.gifData.width,
-                this.state.gifData.height
-            );
+            // Create canvas based on ASCII dimensions, not original image dimensions
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Calculate character dimensions for Courier New font
+            // Courier New has approximately 0.6 width-to-height ratio
+            const charWidth = baseFontSize * 0.6;
+            const charHeight = baseFontSize;
+            
+            // Calculate canvas dimensions based on ASCII grid and font size
+            canvas.width = Math.ceil(this.asciiResult.width * charWidth);
+            canvas.height = Math.ceil(this.asciiResult.height * charHeight);
+            
+            console.log(`Download canvas: ${canvas.width}x${canvas.height}, Font: ${baseFontSize}px, ASCII: ${this.asciiResult.width}x${this.asciiResult.height}`);
+            
+            // Set up canvas for crisp text rendering
+            ctx.imageSmoothingEnabled = false; // Crisp pixel rendering
+            ctx.font = `${baseFontSize}px Courier New, monospace`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            
+            // Fill background with black
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Render ASCII art with proper spacing
+            this.renderHighQualityASCIIToCanvas(ctx, baseFontSize, charWidth, charHeight);
+            
+            // Generate filename with quality and resolution info
+            const qualityName = baseFontSize <= 8 ? 'low' : baseFontSize <= 12 ? 'high' : baseFontSize <= 16 ? 'veryhigh' : 'ultra';
+            const filename = `ascii-art-${this.asciiResult.scale}x-${qualityName}-${Date.now()}.png`;
+            
+            // Download the image
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            console.log(`Downloaded: ${filename} (${canvas.width}x${canvas.height})`);
+            
         } catch (error) {
-            console.error('Frames export error:', error);
-            this.notificationService.showError('Failed to export frames');
+            console.error('Error downloading image:', error);
+            alert('Error downloading image');
+        }
+    }
+    
+    renderHighQualityASCIIToCanvas(ctx, fontSize, charWidth, charHeight) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = this.asciiResult.html;
+        
+        const rows = tempDiv.querySelectorAll('div');
+        
+        for (let y = 0; y < rows.length; y++) {
+            const row = rows[y];
+            const spans = row.querySelectorAll('span');
+            
+            for (let x = 0; x < spans.length; x++) {
+                const span = spans[x];
+                const char = span.textContent;
+                const color = span.style.color;
+                
+                if (color && color !== 'transparent') {
+                    ctx.fillStyle = color;
+                    // Use proper character spacing
+                    ctx.fillText(char, x * charWidth, y * charHeight);
+                }
+            }
         }
     }
 }
 
-// Initialize the application when DOM is ready
+// Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
-    const app = new ASCIIDigitizer();
-    
-    // Log enhancement notice
-    console.log('🎨 ASCII Digitizer Enhanced v2.0');
-    console.log('✨ Features: Edge-aware characters, color quantization, dithering, green screen support');
-    console.log('🎮 Optimized for: Video game aesthetics, transparent images, GIF animations');
+    new ASCIIConverter();
+    console.log('ASCII Converter ready!');
 });
