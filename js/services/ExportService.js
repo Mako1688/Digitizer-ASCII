@@ -45,6 +45,15 @@ class ExportService {
      * @param {number} scaledHeight - Target image height
      */
     downloadAsImage(asciiText, coloredData, settings, scaledWidth, scaledHeight) {
+        console.log('[EXPORT] Starting image download...');
+        console.log('[EXPORT] Input parameters:', {
+            scaledWidth,
+            scaledHeight,
+            settings,
+            asciiTextLength: asciiText.length,
+            hasColoredData: !!coloredData
+        });
+
         const canvas = this.createCanvasForExport(
             asciiText, 
             coloredData, 
@@ -53,15 +62,30 @@ class ExportService {
             scaledHeight
         );
         
+        console.log('[EXPORT] Canvas created:', {
+            actualWidth: canvas.width,
+            actualHeight: canvas.height,
+            styleWidth: canvas.style.width,
+            styleHeight: canvas.style.height,
+            devicePixelRatio: window.devicePixelRatio || 1
+        });
+        
         canvas.toBlob(blob => {
             const url = URL.createObjectURL(blob);
             const filename = this.generateFilename('png');
             
+            console.log('[EXPORT] Blob created:', {
+                filename,
+                blobSize: blob.size,
+                reportedDimensions: `${scaledWidth}x${scaledHeight}`,
+                actualCanvasDimensions: `${canvas.width}x${canvas.height}`
+            });
+
             this.triggerDownload(url, filename);
             URL.revokeObjectURL(url);
             
             this.notificationService.show(
-                `Image saved successfully! (${scaledWidth}x${scaledHeight}px)`
+                `Image saved successfully! (${canvas.width}x${canvas.height}px)`
             );
         });
     }
@@ -76,27 +100,84 @@ class ExportService {
      * @returns {HTMLCanvasElement} Canvas with rendered ASCII art
      */
     createCanvasForExport(asciiText, coloredData, settings, scaledWidth, scaledHeight) {
+        console.log('[EXPORT] Creating canvas for export...');
+        console.log('[EXPORT] Target dimensions:', { scaledWidth, scaledHeight });
+
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        canvas.width = scaledWidth;
-        canvas.height = scaledHeight;
+        // Calculate optimal font size first to determine actual needed canvas size
+        const minFontSize = 12; // Minimum readable font size
+        let fontSize = this.calculateOptimalFontSize(asciiText, scaledWidth, scaledHeight);
+        fontSize = Math.max(fontSize, minFontSize); // Ensure minimum readable size
+        console.log('[EXPORT] Calculated font size:', fontSize, '(minimum enforced:', minFontSize + ')');
+
+        // Calculate actual content dimensions based on ASCII text
+        const lines = asciiText.split('\n').filter(line => line.length > 0);
+        const maxLineLength = Math.max(...lines.map(line => line.length));
+        const charWidth = fontSize * 0.6; // Monospace character width
+        const lineHeight = fontSize * 1.2; // Line spacing
+        const actualContentWidth = Math.ceil(maxLineLength * charWidth);
+        const actualContentHeight = Math.ceil(lines.length * lineHeight);
+
+        console.log('[EXPORT] Actual content dimensions:', {
+            actualContentWidth,
+            actualContentHeight,
+            lines: lines.length,
+            maxLineLength,
+            charWidth,
+            lineHeight
+        });
+
+        // Use actual content dimensions, but ensure minimum canvas size for quality
+        const minCanvasWidth = Math.max(800, actualContentWidth);
+        const minCanvasHeight = Math.max(600, actualContentHeight);
+        const finalWidth = Math.min(minCanvasWidth, Math.max(actualContentWidth, scaledWidth));
+        const finalHeight = Math.min(minCanvasHeight, Math.max(actualContentHeight, scaledHeight));
+
+        console.log('[EXPORT] Final canvas dimensions:', { finalWidth, finalHeight });
         
-        // Calculate optimal font size to fit dimensions
-        const fontSize = this.calculateOptimalFontSize(asciiText, scaledWidth, scaledHeight);
+        // Set canvas to actual final size (no DPI scaling that causes blur)
+        canvas.width = finalWidth;
+        canvas.height = finalHeight;
+        
+        console.log('[EXPORT] Canvas setup complete:', {
+            canvasWidth: canvas.width,
+            canvasHeight: canvas.height,
+            noDPIScaling: true
+        });
         
         // Set background
         ctx.fillStyle = CONFIG.CANVAS.BACKGROUND_COLOR;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, finalWidth, finalHeight);
         
-        // Set text properties
+        // Set text properties for crisp rendering
         ctx.font = `${fontSize}px ${CONFIG.CANVAS.FONT_FAMILY}`;
-        ctx.textBaseline = CONFIG.CANVAS.TEXT_BASELINE;
+        ctx.textBaseline = 'top'; // Use 'top' for more predictable positioning
+        ctx.textAlign = 'left';
+        ctx.imageSmoothingEnabled = false; // Crisp pixel art style
         
+        // Additional properties for sharp text rendering
+        ctx.textRenderingOptimization = 'optimizeLegibility';
+        if (ctx.fontKerning) ctx.fontKerning = 'none'; // Disable kerning for monospace
+        
+        // Force crisp rendering by setting pixel boundaries
+        ctx.translate(0.5, 0.5); // Align to pixel grid
+        
+        console.log('[EXPORT] Text properties set:', {
+            font: ctx.font,
+            baseline: ctx.textBaseline,
+            align: ctx.textAlign,
+            smoothing: ctx.imageSmoothingEnabled,
+            pixelAligned: true
+        });
+
         // Render ASCII art
         if (settings.colored && coloredData && coloredData.length > 0) {
+            console.log('[EXPORT] Rendering colored ASCII...');
             this.renderColoredASCII(ctx, coloredData, fontSize);
         } else {
+            console.log('[EXPORT] Rendering monochrome ASCII...');
             this.renderMonochromeASCII(ctx, asciiText, fontSize);
         }
         
@@ -113,12 +194,41 @@ class ExportService {
     calculateOptimalFontSize(asciiText, width, height) {
         const lines = asciiText.split('\n').filter(line => line.length > 0);
         const maxLineLength = Math.max(...lines.map(line => line.length));
-        const charAspectRatio = CONFIG.CHAR_ASPECT_RATIO;
         
-        const fontSizeByWidth = width / (maxLineLength * charAspectRatio);
-        const fontSizeByHeight = height / lines.length;
+        console.log('[EXPORT] Font size calculation:', {
+            totalLines: lines.length,
+            maxLineLength,
+            targetWidth: width,
+            targetHeight: height
+        });
         
-        return Math.min(fontSizeByWidth, fontSizeByHeight);
+        // Use proper monospace character width ratio (0.6 is typical for monospace fonts)
+        const charWidthRatio = 0.6;
+        const lineHeightRatio = 1.2;
+        
+        const fontSizeByWidth = width / (maxLineLength * charWidthRatio);
+        const fontSizeByHeight = height / (lines.length * lineHeightRatio);
+        
+        let optimalFontSize = Math.min(fontSizeByWidth, fontSizeByHeight);
+        
+        // Ensure minimum font size for readability (12px minimum)
+        const minFontSize = 12;
+        const maxFontSize = 48; // Also cap maximum to prevent huge fonts
+        
+        optimalFontSize = Math.max(minFontSize, Math.min(maxFontSize, optimalFontSize));
+        
+        console.log('[EXPORT] Font size calculation results:', {
+            charWidthRatio,
+            lineHeightRatio,
+            fontSizeByWidth: fontSizeByWidth.toFixed(2),
+            fontSizeByHeight: fontSizeByHeight.toFixed(2),
+            rawOptimal: Math.min(fontSizeByWidth, fontSizeByHeight).toFixed(2),
+            finalOptimal: optimalFontSize,
+            minEnforced: minFontSize,
+            maxEnforced: maxFontSize
+        });
+        
+        return optimalFontSize;
     }
 
     /**
@@ -128,16 +238,29 @@ class ExportService {
      * @param {number} fontSize - Font size in pixels
      */
     renderColoredASCII(ctx, coloredData, fontSize) {
+        const charWidth = fontSize * 0.6; // Proper monospace character width
+        const lineHeight = fontSize * 1.2; // Line spacing
+        
+        console.log('[EXPORT] Rendering colored ASCII with:', {
+            fontSize,
+            charWidth,
+            lineHeight,
+            totalLines: coloredData.length,
+            firstLineLength: coloredData[0]?.length || 0
+        });
+        
         coloredData.forEach((lineData, lineIndex) => {
             lineData.forEach((charData, charIndex) => {
-                ctx.fillStyle = charData.color;
-                ctx.fillText(
-                    charData.char, 
-                    charIndex * fontSize * CONFIG.CHAR_ASPECT_RATIO, 
-                    lineIndex * fontSize
-                );
+                if (charData.char && charData.char.trim()) { // Only render non-whitespace
+                    ctx.fillStyle = charData.color;
+                    const x = charIndex * charWidth;
+                    const y = lineIndex * lineHeight;
+                    ctx.fillText(charData.char, x, y);
+                }
             });
         });
+        
+        console.log('[EXPORT] Colored ASCII rendering complete');
     }
 
     /**
@@ -149,10 +272,25 @@ class ExportService {
     renderMonochromeASCII(ctx, asciiText, fontSize) {
         ctx.fillStyle = CONFIG.CANVAS.TEXT_COLOR;
         const lines = asciiText.split('\n').filter(line => line.length > 0);
+        const lineHeight = fontSize * 1.2; // Line spacing
+        
+        console.log('[EXPORT] Rendering monochrome ASCII with:', {
+            fontSize,
+            lineHeight,
+            totalLines: lines.length,
+            maxLineLength: Math.max(...lines.map(l => l.length)),
+            fillStyle: ctx.fillStyle
+        });
         
         lines.forEach((line, index) => {
-            ctx.fillText(line, 0, index * fontSize);
+            if (line.trim()) { // Only render non-empty lines
+                const x = 0;
+                const y = index * lineHeight;
+                ctx.fillText(line, x, y);
+            }
         });
+        
+        console.log('[EXPORT] Monochrome ASCII rendering complete');
     }
 
     /**

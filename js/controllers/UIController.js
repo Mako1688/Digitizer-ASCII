@@ -174,12 +174,13 @@ class UIController {
     /**
      * Update original image preview
      * @param {string} imageUrl - Image URL to display
-     * @param {number} width - Display width
-     * @param {number} height - Display height
+     * @param {number} width - Display width (optional, for reference only)
+     * @param {number} height - Display height (optional, for reference only)
      */
     updateOriginalPreview(imageUrl, width, height) {
+        // Auto-fit image to container while maintaining aspect ratio
         this.elements.originalPreview.innerHTML = 
-            `<img src="${imageUrl}" alt="Original Image" style="width: ${width}px; height: ${height}px;">`;
+            `<img src="${imageUrl}" alt="Original Image" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain;">`;
     }
 
     /**
@@ -264,6 +265,19 @@ class UIController {
         this.elements.copyTextBtn.disabled = !enabled;
         this.elements.downloadImageBtn.disabled = !enabled;
         this.elements.downloadTextBtn.disabled = !enabled;
+    }
+
+    /**
+     * Enable/disable generate button
+     * @param {boolean} enabled - Whether button should be enabled
+     */
+    setGenerateButtonEnabled(enabled) {
+        this.elements.generateBtn.disabled = !enabled;
+        if (!enabled) {
+            this.elements.generateBtn.textContent = 'GENERATING...';
+        } else {
+            this.elements.generateBtn.textContent = '[ GENERATE ASCII ]';
+        }
     }
 
     /**

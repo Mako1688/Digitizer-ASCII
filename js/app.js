@@ -6,13 +6,15 @@ class ASCIIDigitizer {
     constructor() {
         // Initialize services with dependency injection
         this.notificationService = new NotificationService();
+        this.loadingService = new LoadingService();
         this.characterService = new ASCIICharacterService();
         this.imageProcessor = new ImageProcessorService();
         this.gifParser = new GIFParserService();
         this.cameraService = new CameraService();
         this.asciiGenerator = new ASCIIGeneratorService(
             this.characterService, 
-            this.imageProcessor
+            this.imageProcessor,
+            this.loadingService  // Inject LoadingService following Dependency Injection principle
         );
         this.exportService = new ExportService(this.notificationService);
         
@@ -29,7 +31,9 @@ class ASCIIDigitizer {
             gifFrames: [],
             currentFrameIndex: 0,
             animationId: null,
-            isPlaying: false
+            isPlaying: false,
+            // Generation state
+            isGenerating: false
         };
         
         // Initialize UI controller with event handlers
@@ -231,89 +235,124 @@ class ASCIIDigitizer {
      * Update the original image preview
      */
     updateOriginalPreview() {
-        const dimensions = this.imageProcessor.calculateScaledDimensions(
-            this.state.currentImage,
-            this.state.settings.imageSize
-        );
-        
+        // Auto-fit image to container, no need for calculated dimensions
         this.uiController.updateOriginalPreview(
             this.state.currentImageUrl,
-            dimensions.width,
-            dimensions.height
+            this.state.currentImage.naturalWidth,  // Pass natural dimensions for reference
+            this.state.currentImage.naturalHeight
         );
     }
 
     /**
      * Handle ASCII generation
      */
-    handleGenerate() {
-        if (!this.state.currentImage) return;
+    async handleGenerate() {
+        console.log('[HANDLE-GENERATE] Starting generation process');
+        console.log('[HANDLE-GENERATE] Current image:', !!this.state.currentImage);
+        console.log('[HANDLE-GENERATE] Is generating:', this.state.isGenerating);
         
-        // Stop any existing animation
-        this.stopAnimation();
-        
-        if (this.state.isGIF && this.state.gifFrames.length > 1) {
-            // Generate ASCII for all GIF frames
-            this.generateGIFASCII();
-        } else {
-            // Generate single frame ASCII
-            this.generateSingleFrameASCII();
+        if (!this.state.currentImage || this.state.isGenerating) {
+            console.log('[HANDLE-GENERATE] Aborting - no image or already generating');
+            return;
         }
         
-        // Enable export and zoom controls
-        this.uiController.setExportButtonsEnabled(true);
-        this.uiController.setZoomControlsEnabled(true);
-        
-        // Reset zoom to default
-        this.state.settings.zoom = CONFIG.ZOOM.DEFAULT;
-        this.uiController.updateZoomDisplay(this.state.settings.zoom);
+        try {
+            console.log('[HANDLE-GENERATE] Setting generating state to true');
+            this.state.isGenerating = true;
+            this.uiController.setGenerateButtonEnabled(false);
+            
+            // Stop any existing animation
+            this.stopAnimation();
+            
+            if (this.state.isGIF && this.state.gifFrames.length > 1) {
+                console.log('[HANDLE-GENERATE] Processing GIF with', this.state.gifFrames.length, 'frames');
+                // Generate ASCII for all GIF frames
+                await this.generateGIFASCII();
+            } else {
+                console.log('[HANDLE-GENERATE] Processing single frame');
+                // Generate single frame ASCII
+                await this.generateSingleFrameASCII();
+            }
+            
+            console.log('[HANDLE-GENERATE] Generation complete, enabling controls');
+            // Enable export and zoom controls
+            this.uiController.setExportButtonsEnabled(true);
+            this.uiController.setZoomControlsEnabled(true);
+            
+        } catch (error) {
+            console.error('[HANDLE-GENERATE] ASCII generation error:', error);
+            this.notificationService.showError('Failed to generate ASCII art');
+        } finally {
+            console.log('[HANDLE-GENERATE] Cleanup - setting generating to false and hiding loading');
+            this.state.isGenerating = false;
+            this.uiController.setGenerateButtonEnabled(true);
+            this.loadingService.hide();
+        }
     }
 
     /**
      * Generate ASCII for single image
      */
-    generateSingleFrameASCII() {
-        const scaledDimensions = this.imageProcessor.calculateScaledDimensions(
-            this.state.currentImage,
-            this.state.settings.imageSize
-        );
+    async generateSingleFrameASCII() {
+        console.log('[ASCII] Starting single frame ASCII generation');
+        this.loadingService.show('Generating ASCII Art...', 'Preparing image data');
         
+        console.log('[ASCII] Image natural dimensions:', this.state.currentImage.naturalWidth, 'x', this.state.currentImage.naturalHeight);
+        console.log('[ASCII] Settings:', {
+            fontSize: this.state.settings.fontSize,
+            resolution: this.state.settings.resolution,
+            colored: this.state.settings.colored,
+            inverted: this.state.settings.inverted,
+            contrast: this.state.settings.contrast
+        });
+        
+        // Use the natural image dimensions for character calculation
+        console.log('[ASCII] Calculating character dimensions...');
         const charDimensions = this.imageProcessor.calculateCharacterDimensions(
-            scaledDimensions.width,
-            scaledDimensions.height,
+            this.state.currentImage.naturalWidth,
+            this.state.currentImage.naturalHeight,
             this.state.settings.fontSize,
             this.state.settings.resolution
         );
         
+        console.log('[ASCII] Character dimensions calculated:', charDimensions);
+        
+        console.log('[ASCII] Processing image to character size...');
         const imageData = this.imageProcessor.processImageToCharacterSize(
             this.state.currentImage,
             charDimensions.charWidth,
             charDimensions.charHeight
         );
         
+        console.log('[ASCII] ImageData processed:', imageData.width, 'x', imageData.height);
+        console.log('[ASCII] Starting ASCII generation type:', this.state.settings.colored ? 'colored' : 'monochrome');
+        
         if (this.state.settings.colored) {
-            this.generateColoredASCII(imageData, charDimensions);
+            console.log('[ASCII] Calling generateColoredASCII...');
+            await this.generateColoredASCII(imageData, charDimensions);
         } else {
-            this.generateMonochromeASCII(imageData, charDimensions);
+            console.log('[ASCII] Calling generateMonochromeASCII...');
+            await this.generateMonochromeASCII(imageData, charDimensions);
         }
+        
+        console.log('[ASCII] Single frame ASCII generation complete');
     }
 
     /**
      * Generate ASCII for all GIF frames
      */
     async generateGIFASCII() {
-        this.notificationService.show(
-            `Processing ${this.state.gifFrames.length} frames...`
+        const frameCount = this.state.gifFrames.length;
+        this.loadingService.show(
+            `Processing ${frameCount} frames...`,
+            'Preparing animation data'
         );
         
-        const scaledDimensions = this.imageProcessor.calculateScaledDimensions(
-            this.state.currentImage,
-            this.state.settings.imageSize
-        );
-        
+        // Use the natural frame dimensions for character calculation
+        const firstFrame = this.state.gifFrames[0];
         const charDimensions = this.imageProcessor.calculateCharacterDimensions(
-            scaledDimensions.width,
-            scaledDimensions.height,
+            firstFrame.width || this.state.currentImage.naturalWidth,
+            firstFrame.height || this.state.currentImage.naturalHeight,
             this.state.settings.fontSize,
             this.state.settings.resolution
         );
@@ -321,16 +360,31 @@ class ASCIIDigitizer {
         // Generate ASCII for each frame
         const asciiFrames = [];
         
-        for (let i = 0; i < this.state.gifFrames.length; i++) {
+        for (let i = 0; i < frameCount; i++) {
             const frame = this.state.gifFrames[i];
             const imageData = frame.imageData;
             
+            // Update progress
+            const frameProgress = (i / frameCount) * 100;
+            this.loadingService.updateProgress(
+                frameProgress, 
+                `Processing frame ${i + 1} of ${frameCount}`
+            );
+            
+            // Create image element from frame data for high-res sampling
+            const frameImage = new Image();
+            frameImage.src = frame.dataUrl;
+            await new Promise(resolve => {
+                frameImage.onload = resolve;
+            });
+            
             if (this.state.settings.colored) {
-                const result = this.asciiGenerator.generateColored(
+                const result = await this.asciiGenerator.generateColored(
                     imageData,
                     charDimensions.charWidth,
                     charDimensions.charHeight,
-                    this.state.settings
+                    this.state.settings,
+                    frameImage  // Pass original frame image
                 );
                 asciiFrames.push({
                     coloredData: result.coloredData,
@@ -338,16 +392,22 @@ class ASCIIDigitizer {
                     delay: frame.delay || CONFIG.GIF.DEFAULT_FRAME_DELAY
                 });
             } else {
-                const asciiText = this.asciiGenerator.generateMonochrome(
+                const asciiText = await this.asciiGenerator.generateMonochrome(
                     imageData,
                     charDimensions.charWidth,
                     charDimensions.charHeight,
-                    this.state.settings
+                    this.state.settings,
+                    frameImage  // Pass original frame image
                 );
                 asciiFrames.push({
                     asciiText: asciiText,
                     delay: frame.delay || CONFIG.GIF.DEFAULT_FRAME_DELAY
                 });
+            }
+            
+            // Yield control periodically
+            if (i % 5 === 0) {
+                await this.loadingService.yield();
             }
         }
         
@@ -485,40 +545,70 @@ class ASCIIDigitizer {
     /**
      * Generate monochrome ASCII art
      */
-    generateMonochromeASCII(imageData, charDimensions) {
-        this.state.asciiText = this.asciiGenerator.generateMonochrome(
+    async generateMonochromeASCII(imageData, charDimensions) {
+        console.log('[ASCII-MONO] Starting monochrome generation with dimensions:', charDimensions);
+        
+        const result = await this.asciiGenerator.generateMonochrome(
             imageData,
             charDimensions.charWidth,
             charDimensions.charHeight,
-            this.state.settings
+            this.state.settings,
+            this.state.currentImage  // Pass original high-res image
         );
         
+        console.log('[ASCII-MONO] Generation complete, result length:', result ? result.length : 0);
+        
+        this.state.asciiText = result;
         this.state.coloredData = null;
+        
+        console.log('[ASCII-MONO] Updating UI with ASCII text...');
+        // Update UI immediately
         this.uiController.updateASCIIPreviewText(this.state.asciiText);
         this.updateASCIIDisplay();
+        
+        console.log('[ASCII-MONO] UI updated, setting progress to 100%');
+        // Ensure loading is hidden after UI update
+        this.loadingService.updateProgress(100, 'Complete');
+        await this.loadingService.yield(); // Give UI one frame to update
+        console.log('[ASCII-MONO] Monochrome generation finished');
     }
 
     /**
      * Generate colored ASCII art
      */
-    generateColoredASCII(imageData, charDimensions) {
-        const result = this.asciiGenerator.generateColored(
+    async generateColoredASCII(imageData, charDimensions) {
+        console.log('[ASCII-COLOR] Starting colored generation with dimensions:', charDimensions);
+        
+        const result = await this.asciiGenerator.generateColored(
             imageData,
             charDimensions.charWidth,
             charDimensions.charHeight,
-            this.state.settings
+            this.state.settings,
+            this.state.currentImage  // Pass original high-res image
         );
+        
+        console.log('[ASCII-COLOR] Generation complete, result text length:', result ? result.asciiText?.length : 0);
+        console.log('[ASCII-COLOR] Colored data rows:', result ? result.coloredData?.length : 0);
         
         this.state.asciiText = result.asciiText;
         this.state.coloredData = result.coloredData;
         
+        console.log('[ASCII-COLOR] Creating colored HTML elements...');
+        // Create and update colored HTML immediately
         const fragment = this.asciiGenerator.createColoredHTMLElements(
             this.state.coloredData,
             this.state.settings.fontSize
         );
         
+        console.log('[ASCII-COLOR] Updating UI with colored HTML...');
         this.uiController.updateASCIIPreviewHTML(fragment);
         this.updateASCIIDisplay();
+        
+        console.log('[ASCII-COLOR] UI updated, setting progress to 100%');
+        // Ensure loading is hidden after UI update
+        this.loadingService.updateProgress(100, 'Complete');
+        await this.loadingService.yield(); // Give UI one frame to update
+        console.log('[ASCII-COLOR] Colored generation finished');
     }
 
     /**
@@ -620,24 +710,38 @@ class ASCIIDigitizer {
      */
     handleFitToView() {
         const asciiElement = this.uiController.getASCIIPreviewElement();
-        const previewWidth = asciiElement.clientWidth - CONFIG.PREVIEW.PADDING;
-        const previewHeight = asciiElement.clientHeight - CONFIG.PREVIEW.PADDING;
+        const containerWidth = asciiElement.clientWidth - CONFIG.PREVIEW.PADDING;
+        const containerHeight = asciiElement.clientHeight - CONFIG.PREVIEW.PADDING;
         
-        if (this.state.asciiText) {
+        if (this.state.asciiText && containerWidth > 0 && containerHeight > 0) {
             const lines = this.state.asciiText.split('\n').filter(line => line.length > 0);
+            if (lines.length === 0) return;
+            
             const maxLineLength = Math.max(...lines.map(line => line.length));
             const lineCount = lines.length;
             
+            // Calculate the current font size in pixels
             const currentCharWidth = this.state.settings.fontSize * CONFIG.CHAR_ASPECT_RATIO;
             const currentCharHeight = this.state.settings.fontSize;
             
-            const totalWidth = maxLineLength * currentCharWidth;
-            const totalHeight = lineCount * currentCharHeight;
+            // Calculate required space for ASCII art
+            const requiredWidth = maxLineLength * currentCharWidth;
+            const requiredHeight = lineCount * currentCharHeight;
             
-            const widthZoom = (previewWidth / totalWidth) * 100;
-            const heightZoom = (previewHeight / totalHeight) * 100;
+            // Calculate zoom factors needed to fit
+            const widthZoomFactor = containerWidth / requiredWidth;
+            const heightZoomFactor = containerHeight / requiredHeight;
             
-            this.state.settings.zoom = Math.floor(Math.min(widthZoom, heightZoom, 100));
+            // Use the smaller zoom factor to ensure it fits in both dimensions
+            let optimalZoom = Math.min(widthZoomFactor, heightZoomFactor) * 100;
+            
+            // Ensure zoom is within valid bounds and not too small
+            optimalZoom = Math.max(CONFIG.ZOOM.MIN, Math.min(CONFIG.ZOOM.MAX, optimalZoom));
+            
+            // Round to nearest step for cleaner values
+            optimalZoom = Math.round(optimalZoom / CONFIG.ZOOM.STEP) * CONFIG.ZOOM.STEP;
+            
+            this.state.settings.zoom = optimalZoom;
             this.uiController.updateZoomDisplay(this.state.settings.zoom);
             this.updateASCIIDisplay();
             
@@ -670,17 +774,40 @@ class ASCIIDigitizer {
      * Handle download as image
      */
     handleDownloadImage() {
-        const scaledDimensions = this.imageProcessor.calculateScaledDimensions(
-            this.state.currentImage,
-            this.state.settings.imageSize
+        // Calculate export dimensions based on ASCII content, not original image
+        const charDimensions = this.imageProcessor.calculateCharacterDimensions(
+            this.state.currentImage.width * this.state.settings.imageSize,
+            this.state.currentImage.height * this.state.settings.imageSize,
+            this.state.settings.fontSize,
+            this.state.settings.resolution
         );
+
+        // Calculate optimal export dimensions for high-quality text
+        // Use a larger base size to ensure crisp text rendering
+        const baseFontSize = Math.max(16, this.state.settings.fontSize * 2); // At least 16px for clarity
+        const exportWidth = Math.max(1200, charDimensions.charWidth * baseFontSize * 0.6);
+        const exportHeight = Math.max(800, charDimensions.charHeight * baseFontSize * 1.2);
+
+        console.log('[APP] Download image request:', {
+            originalImage: {
+                width: this.state.currentImage.width,
+                height: this.state.currentImage.height
+            },
+            charDimensions,
+            baseFontSize,
+            exportDimensions: {
+                width: exportWidth,
+                height: exportHeight
+            },
+            settings: this.state.settings
+        });
         
         this.exportService.downloadAsImage(
             this.state.asciiText,
             this.state.coloredData,
             this.state.settings,
-            scaledDimensions.width,
-            scaledDimensions.height
+            exportWidth,
+            exportHeight
         );
     }
 
@@ -736,4 +863,9 @@ class ASCIIDigitizer {
 // Initialize the application when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     const app = new ASCIIDigitizer();
+    
+    // Log enhancement notice
+    console.log('🎨 ASCII Digitizer Enhanced v2.0');
+    console.log('✨ Features: Edge-aware characters, color quantization, dithering, green screen support');
+    console.log('🎮 Optimized for: Video game aesthetics, transparent images, GIF animations');
 });

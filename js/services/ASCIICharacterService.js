@@ -5,6 +5,17 @@ class ASCIICharacterService {
     constructor(asciiChars = CONFIG.ASCII_CHARS) {
         this.asciiChars = asciiChars;
         this.asciiCharsInverted = [...asciiChars].reverse();
+        
+        // Edge-aware character sets (ordered by visual density/complexity)
+        this.edgeChars = {
+            high: ['#', '@', '$', '%', '&', 'M', 'W', 'B', '8', '*', 'N', 'H'],
+            medium: ['o', 'a', 'h', 'k', 'b', 'd', 'p', 'q', 'w', 'm', 'Z', 'O'],
+            low: ['0', 'Q', 'L', 'C', 'J', 'U', 'Y', 'X', 'z', 'c', 'v', 'u'],
+            minimal: ['n', 'x', 'r', 'j', 'f', 't', '/', '\\', '|', '(', ')'],
+            sparse: ['1', '{', '}', '[', ']', '?', '-', '_', '+', '~', '<', '>'],
+            light: ['i', '!', 'l', 'I', ';', ':', ',', '"', '^', '`', "'", '.'],
+            transparent: [' ']
+        };
     }
 
     /**
@@ -26,6 +37,39 @@ class ASCIICharacterService {
         const chars = this.getCharacterSet(inverted);
         const charIndex = Math.floor(brightness * (chars.length - 1));
         return chars[charIndex];
+    }
+
+    /**
+     * Select character based on brightness and edge intensity (edge-aware selection)
+     * @param {number} brightness - Normalized brightness value (0-1)
+     * @param {number} edgeIntensity - Edge intensity (0-1)
+     * @param {boolean} inverted - Whether to use inverted mapping
+     * @returns {string} The best ASCII character for the region
+     */
+    selectEdgeAwareCharacter(brightness, edgeIntensity, inverted = false) {
+        // Determine character complexity based on edge intensity
+        let charSet;
+        if (edgeIntensity > 0.7) {
+            charSet = this.edgeChars.high;
+        } else if (edgeIntensity > 0.5) {
+            charSet = this.edgeChars.medium;
+        } else if (edgeIntensity > 0.3) {
+            charSet = this.edgeChars.low;
+        } else if (edgeIntensity > 0.1) {
+            charSet = this.edgeChars.minimal;
+        } else if (brightness > 0.1) {
+            charSet = this.edgeChars.sparse;
+        } else {
+            charSet = this.edgeChars.light;
+        }
+        
+        // Select character based on brightness within the edge-appropriate set
+        if (inverted) {
+            charSet = [...charSet].reverse();
+        }
+        
+        const charIndex = Math.floor(brightness * (charSet.length - 1));
+        return charSet[charIndex];
     }
 
     /**

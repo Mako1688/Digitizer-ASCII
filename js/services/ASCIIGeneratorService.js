@@ -2,48 +2,121 @@
 // Single Responsibility: Generate ASCII art from image data (both monochrome and colored)
 
 class ASCIIGeneratorService {
-    constructor(characterService, imageProcessor) {
+    constructor(characterService, imageProcessor, loadingService = null) {
         this.characterService = characterService;
         this.imageProcessor = imageProcessor;
+        this.loadingService = loadingService;
     }
 
     /**
-     * Generate monochrome ASCII art from image data
+     * Generate monochrome ASCII art from image data (async with progress)
      * @param {ImageData} imageData - Image data to convert
      * @param {number} width - Width in characters
      * @param {number} height - Height in characters
      * @param {Object} settings - Generation settings (inverted, contrast)
-     * @returns {string} ASCII art as plain text
+     * @param {HTMLImageElement} originalImage - Original high-res image for multi-sampling
+     * @returns {Promise<string>} ASCII art as plain text
      */
-    generateMonochrome(imageData, width, height, settings) {
+    /**
+     * Generate monochrome ASCII art from image data (async with progress)
+     * @param {ImageData} imageData - Image data to convert
+     * @param {number} width - Width in characters
+     * @param {number} height - Height in characters
+     * @param {Object} settings - Generation settings (inverted, contrast)
+     * @param {HTMLImageElement} originalImage - Original high-res image for multi-sampling
+     * @returns {Promise<string>} ASCII art as plain text
+     */
+    async generateMonochrome(imageData, width, height, settings, originalImage = null) {
+        if (width <= 0 || height <= 0) {
+            console.error('[GENERATOR-MONO] Invalid ASCII dimensions:', width, height);
+            throw new Error('Invalid ASCII dimensions');
+        }
+        
         const { inverted, contrast } = settings;
         let asciiText = '';
         
-        for (let y = 0; y < height; y++) {
-            asciiText += this.generateMonochromeLine(imageData, y, width, inverted, contrast);
-            asciiText += '\n';
+        const chunkSize = Math.max(1, CONFIG.LOADING.CHUNK_SIZE); // Ensure at least 1
+        let totalProcessed = 0;
+        
+        for (let y = 0; y < height; y += chunkSize) {
+            const endY = Math.min(y + chunkSize, height);
+            
+            // Process chunk
+            for (let row = y; row < endY; row++) {
+                const line = this.generateMonochromeLineEnhanced(
+                    imageData, originalImage, row, width, height, inverted, contrast, settings
+                );
+                asciiText += line;
+                if (row < height - 1) asciiText += '\n';
+                totalProcessed++;
+            }
+            
+            // Update progress and yield control
+            const progress = (totalProcessed / height) * 100;
+            
+            if (this.loadingService) {
+                this.loadingService.updateProgress(progress, 'Processing line ' + totalProcessed + ' of ' + height);
+                await this.loadingService.yield();
+            }
+            
+            // Safety check to prevent infinite loops
+            if (totalProcessed >= height) {
+                break;
+            }
         }
         
         return asciiText;
     }
 
     /**
-     * Generate a single line of monochrome ASCII
-     * @param {ImageData} imageData - Image data
+     * Generate a single line of enhanced monochrome ASCII
+     * @param {ImageData} imageData - Low-res image data
+     * @param {HTMLImageElement} originalImage - High-res original image
      * @param {number} y - Y coordinate (row)
      * @param {number} width - Width in characters
+     * @param {number} height - Height in characters
      * @param {boolean} inverted - Whether to invert brightness
      * @param {number} contrast - Contrast multiplier
+     * @param {Object} settings - Generation settings
      * @returns {string} Single line of ASCII characters
      */
-    generateMonochromeLine(imageData, y, width, inverted, contrast) {
+    generateMonochromeLineEnhanced(imageData, originalImage, y, width, height, inverted, contrast, settings = {}) {
         let line = '';
         
         for (let x = 0; x < width; x++) {
-            const pixel = this.imageProcessor.getPixelData(imageData, x, y, width);
-            const brightness = this.characterService.rgbToBrightness(pixel.r, pixel.g, pixel.b);
+            let pixelData;
+            
+            // Use faster simple sampling by default, only use multi-sampling if explicitly enabled
+            if (originalImage && settings.edgeEnhanced) {
+                pixelData = this.imageProcessor.multiSampleCharacterCell(
+                    imageData, originalImage, x, y, width, height
+                );
+            } else {
+                // Fast path: simple pixel sampling
+                const pixel = this.imageProcessor.getPixelData(imageData, x, y, width);
+                pixelData = {
+                    r: pixel.r, g: pixel.g, b: pixel.b, a: pixel.a,
+                    edgeIntensity: 0,
+                    isTransparent: pixel.a < 128  // Only transparent if alpha is low, not if RGB is black
+                };
+            }
+            
+            const brightness = this.characterService.rgbToBrightness(pixelData.r, pixelData.g, pixelData.b);
             const adjustedBrightness = this.imageProcessor.applyContrast(brightness, contrast);
-            const char = this.characterService.brightnessToChar(adjustedBrightness, inverted);
+            
+            // Use faster standard character selection unless edge enhancement is specifically enabled
+            let char;
+            if (settings.edgeEnhanced && pixelData.edgeIntensity > 0) {
+                char = this.characterService.selectEdgeAwareCharacter(
+                    adjustedBrightness,
+                    pixelData.edgeIntensity,
+                    inverted
+                );
+            } else {
+                // Fast path: standard brightness-to-character mapping
+                char = this.characterService.brightnessToChar(adjustedBrightness, inverted);
+            }
+            
             line += char;
         }
         
@@ -51,48 +124,144 @@ class ASCIIGeneratorService {
     }
 
     /**
-     * Generate colored ASCII art from image data
+     * Generate colored ASCII art from image data (async with progress)
      * @param {ImageData} imageData - Image data to convert
      * @param {number} width - Width in characters
      * @param {number} height - Height in characters
      * @param {Object} settings - Generation settings (inverted, contrast, fontSize)
-     * @returns {Object} Object with coloredData array and asciiText string
+     * @param {HTMLImageElement} originalImage - Original high-res image for multi-sampling
+     * @returns {Promise<Object>} Object with coloredData array and asciiText string
      */
-    generateColored(imageData, width, height, settings) {
+    /**
+     * Generate colored ASCII art from image data (async with progress)
+     * @param {ImageData} imageData - Image data to convert
+     * @param {number} width - Width in characters
+     * @param {number} height - Height in characters
+     * @param {Object} settings - Generation settings (inverted, contrast, fontSize)
+     * @param {HTMLImageElement} originalImage - Original high-res image for multi-sampling
+     * @returns {Promise<Object>} Object with coloredData array and asciiText string
+     */
+    async generateColored(imageData, width, height, settings, originalImage = null) {
+        console.log('[GENERATOR-COLOR] Starting colored ASCII generation:', width, 'x', height, 'characters');
+        console.log('[GENERATOR-COLOR] Input imageData:', imageData.width, 'x', imageData.height, 'pixels');
+        console.log('[GENERATOR-COLOR] Settings:', settings);
+        
+        if (width <= 0 || height <= 0) {
+            console.error('[GENERATOR-COLOR] Invalid ASCII dimensions:', width, height);
+            throw new Error('Invalid ASCII dimensions');
+        }
+        
         const { inverted, contrast, fontSize } = settings;
         const coloredData = [];
         let asciiText = '';
         
-        for (let y = 0; y < height; y++) {
-            const lineResult = this.generateColoredLine(imageData, y, width, inverted, contrast);
-            coloredData.push(lineResult.lineData);
-            asciiText += '\n';
+        // Initialize error diffusion matrix for dithering
+        const errorMatrix = {};
+        const chunkSize = Math.max(1, CONFIG.LOADING.CHUNK_SIZE); // Ensure at least 1
+        let totalProcessed = 0;
+        
+        for (let y = 0; y < height; y += chunkSize) {
+            const endY = Math.min(y + chunkSize, height);
+            
+            // Process chunk of lines
+            for (let row = y; row < endY; row++) {
+                const lineResult = this.generateColoredLineEnhanced(
+                    imageData, 
+                    originalImage,
+                    row, 
+                    width, 
+                    height,
+                    inverted, 
+                    contrast, 
+                    errorMatrix,
+                    settings
+                );
+                coloredData.push(lineResult.lineData);
+                
+                // Build ASCII text from line data
+                const lineText = lineResult.lineData.map(charData => charData.char).join('');
+                asciiText += lineText;
+                if (row < height - 1) asciiText += '\n';
+                totalProcessed++;
+            }
+            
+            // Update progress and yield control
+            const progress = (totalProcessed / height) * 100;
+            
+            if (this.loadingService) {
+                this.loadingService.updateProgress(progress, 'Processing colored line ' + totalProcessed + ' of ' + height);
+                await this.loadingService.yield();
+            }
+            
+            // Safety check to prevent infinite loops
+            if (totalProcessed >= height) {
+                break;
+            }
         }
         
         return { coloredData, asciiText };
     }
 
     /**
-     * Generate a single line of colored ASCII data
-     * @param {ImageData} imageData - Image data
+     * Generate enhanced colored line with multi-sampling and edge detection
+     * @param {ImageData} imageData - Low-res image data
+     * @param {HTMLImageElement} originalImage - High-res original image
      * @param {number} y - Y coordinate (row)
      * @param {number} width - Width in characters
+     * @param {number} height - Height in characters
      * @param {boolean} inverted - Whether to invert brightness
      * @param {number} contrast - Contrast multiplier
+     * @param {Object} errorMatrix - Dithering error matrix
+     * @param {Object} settings - Generation settings
      * @returns {Object} Object with lineData array containing character and color info
      */
-    generateColoredLine(imageData, y, width, inverted, contrast) {
+    generateColoredLineEnhanced(imageData, originalImage, y, width, height, inverted, contrast, errorMatrix, settings = {}) {
         const lineData = [];
         
         for (let x = 0; x < width; x++) {
-            const pixel = this.imageProcessor.getPixelData(imageData, x, y, width);
-            const brightness = this.characterService.rgbToBrightness(pixel.r, pixel.g, pixel.b);
+            let pixelData;
+            
+            // Use faster simple sampling by default, only use multi-sampling if explicitly enabled
+            if (originalImage && settings.edgeEnhanced) {
+                pixelData = this.imageProcessor.multiSampleCharacterCell(
+                    imageData, originalImage, x, y, width, height
+                );
+            } else {
+                // Fast path: simple pixel sampling
+                const pixel = this.imageProcessor.getPixelData(imageData, x, y, width);
+                pixelData = {
+                    r: pixel.r, g: pixel.g, b: pixel.b, a: pixel.a,
+                    edgeIntensity: 0,
+                    isTransparent: pixel.a < 128  // Only transparent if alpha is low, not if RGB is black
+                };
+            }
+            
+            // Calculate brightness and apply contrast
+            const brightness = this.characterService.rgbToBrightness(pixelData.r, pixelData.g, pixelData.b);
             const adjustedBrightness = this.imageProcessor.applyContrast(brightness, contrast);
-            const char = this.characterService.brightnessToChar(adjustedBrightness, inverted);
+            
+            // Use faster standard character selection unless edge enhancement is specifically enabled
+            let char;
+            if (settings.edgeEnhanced && pixelData.edgeIntensity > 0) {
+                char = this.characterService.selectEdgeAwareCharacter(
+                    adjustedBrightness,
+                    pixelData.edgeIntensity,
+                    inverted
+                );
+            } else {
+                // Fast path: standard brightness-to-character mapping
+                char = this.characterService.brightnessToChar(adjustedBrightness, inverted);
+            }
+            
+            // Use simple RGB color for better performance, skip expensive quantization
+            const color = 'rgb(' + pixelData.r + ', ' + pixelData.g + ', ' + pixelData.b + ')';
             
             lineData.push({
                 char: char,
-                color: `rgb(${pixel.r}, ${pixel.g}, ${pixel.b})`
+                color: color,
+                isTransparent: pixelData.isTransparent,
+                isGreenScreen: pixelData.isGreenScreen,
+                edgeIntensity: pixelData.edgeIntensity
             });
         }
         
@@ -133,7 +302,24 @@ class ASCIIGeneratorService {
         lineData.forEach(charData => {
             const span = document.createElement('span');
             span.textContent = charData.char;
-            span.style.color = charData.color;
+            
+            // Handle transparency and green screen with special styling
+            if (charData.isTransparent || charData.isGreenScreen) {
+                span.style.color = 'transparent';
+                span.style.backgroundColor = 'transparent';
+                // Add a subtle visual indicator for transparent areas during editing
+                if (charData.char === ' ') {
+                    span.style.background = 'rgba(0, 255, 0, 0.1)'; // Very subtle green tint
+                }
+            } else {
+                span.style.color = charData.color;
+                
+                // Add subtle glow effect for high-edge characters (video game aesthetic)
+                if (charData.edgeIntensity && charData.edgeIntensity > 0.6) {
+                    span.style.textShadow = `0 0 2px ${charData.color}`;
+                }
+            }
+            
             lineDiv.appendChild(span);
         });
         
