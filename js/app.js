@@ -233,21 +233,28 @@ class ASCIIConverter {
                 const avgB = Math.round(totalB / samplesCount);
                 const avgA = Math.round(totalA / samplesCount);
                 
-                // Calculate brightness (luminance)
-                const brightness = (avgR * 0.299 + avgG * 0.587 + avgB * 0.114) / 255;
-                
-                // Add slight variation for visual complexity
-                const variation = (Math.random() - 0.5) * 0.1;
-                const adjustedBrightness = Math.max(0, Math.min(1, brightness + variation));
-                
-                // Select character based on brightness
-                const charIndex = Math.floor(adjustedBrightness * charCount);
-                const char = chars[charIndex];
-                
-                // Use averaged pixel color
-                const color = avgA > 0 ? `rgb(${avgR},${avgG},${avgB})` : 'transparent';
-                
-                rowHTML += `<span style="color:${color}">${char}</span>`;
+                // Check if this block is transparent (threshold of 25 for mostly transparent areas)
+                if (avgA < 25) {
+                    // For transparent areas, add invisible space to maintain structure
+                    rowHTML += `<span style="color:transparent">&nbsp;</span>`;
+                } else {
+                    // Calculate brightness (luminance) for visible pixels
+                    const brightness = (avgR * 0.299 + avgG * 0.587 + avgB * 0.114) / 255;
+                    
+                    // Add slight variation for visual complexity
+                    const variation = (Math.random() - 0.5) * 0.1;
+                    const adjustedBrightness = Math.max(0, Math.min(1, brightness + variation));
+                    
+                    // Select character based on brightness
+                    const charIndex = Math.floor(adjustedBrightness * charCount);
+                    const char = chars[charIndex];
+                    
+                    // Use averaged pixel color with alpha
+                    const alpha = avgA / 255;
+                    const color = `rgba(${avgR},${avgG},${avgB},${alpha})`;
+                    
+                    rowHTML += `<span style="color:${color}">${char}</span>`;
+                }
                 processedBlocks++;
             }
             
@@ -398,9 +405,8 @@ class ASCIIConverter {
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
             
-            // Fill background with black
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Leave background transparent - don't fill with black
+            // This allows the transparent parts of the ASCII art to remain transparent
             
             // Render ASCII art with proper spacing
             this.renderHighQualityASCIIToCanvas(ctx, baseFontSize, charWidth, charHeight);
@@ -438,7 +444,8 @@ class ASCIIConverter {
                 const char = span.textContent;
                 const color = span.style.color;
                 
-                if (color && color !== 'transparent') {
+                // Skip transparent spans and invisible spaces
+                if (color && color !== 'transparent' && char !== ' ') {
                     ctx.fillStyle = color;
                     // Use proper character spacing
                     ctx.fillText(char, x * charWidth, y * charHeight);
